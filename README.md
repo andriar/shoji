@@ -25,7 +25,7 @@ folder icons and the wallpaper.
 - **Shortcuts** (Super+/) — one cheat sheet with every described bind, in columns by group; click
   one to run it, or start typing to search.
 - **Notifications** slide in from the right edge one at a time; the stack never stretches.
-- **Instant terminal** — `hypr-term` opens a ghostty window in ~70 ms (a cold start takes ~1 s) by
+- **Instant terminal** — `hypr-term` opens a ghostty window in ~20 ms (a cold start takes ~1 s) by
   asking the ghostty that is already running.
 - **Theme manager** (Super+Shift+T) — six palettes, follow the sun (light by day, dark at night).
 - **Lock screen** with an ensō around the clock and the date in kanji.
@@ -135,7 +135,9 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 |---|---|
 | `Super+Space` | app launcher (Enter = open or focus, Shift+Enter = new window) |
 | `Super+/` | cheat sheet of every shortcut (type to search) |
-| `hypr-focus-or-launch` | bind a key per app: focus it if open, start it if not |
+| `Super+Enter` | terminal via `hypr-term` (instant once ghostty runs) |
+| `hypr-focus-or-launch` | bind a key per app: focus it if open (again = next window), start it if not |
+| click a workspace | switch to it (一 二 三 四) |
 | `Super+Shift+T` | theme manager |
 | click the clock | calendar, quick settings, notifications |
 | click / scroll the ensō in the bar | sound devices / volume |
@@ -152,10 +154,13 @@ wallpaper sky and hills), then `shoji doctor <name>` to check contrast and `shoj
 ## How it is built
 
 - `bin/shoji` — the palettes and every generator: Hyprland, waybar, swaync, wlogout, fuzzel,
-  hyprlock, ghostty, starship, btop, qt6ct, GTK 3/4 and fzf colors, plus the wallpaper,
-  ensō images and folder icons (cairo).
+  hyprlock, ghostty, starship, btop, qt6ct, GTK 3/4 (with a full GTK3 layer for Thunar and friends),
+  fzf, bat and delta colors, plus the wallpaper, ensō images and folder icons (cairo). `shoji apply`
+  reloads everything that can reload and restarts Thunar on its folders.
 - `bin/hypr-widgets` — one small GTK3 layer-shell process (about 60 MB): ensō OSD, calendar card,
-  popovers, theme manager and launcher.
+  popovers, theme manager, launcher and the shortcuts sheet.
+- `bin/hypr-term` — opens a terminal as a D-Bus action on the running ghostty;
+  `bin/hypr-focus-or-launch` — one key per app.
 - `generators/` — the waybar and swaync configs, generated so icons and buttons match what is
   installed.
 - `bin/shoji-ws` — workspace buttons for waybar. Its `hyprland/workspaces` module switches with
