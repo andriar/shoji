@@ -1050,10 +1050,154 @@ class Launcher(Popover):
         self.entry.grab_focus()
 
 
+class KeyMap(Gtk.DrawingArea):
+    """A drawn ANSI keyboard: keys bound in the chosen modifier layer carry what they do."""
+    U = 58          # one key unit, px
+    PAD = 3         # gap inside each unit
+    # (hyprland key name, cap label, x, y, width) in key units
+    LAYOUT = (
+        [("Escape", "Esc", 0, 0, 1)]
+        + [(k, lbl, 1.5 + i, 0, 1) for i, (k, lbl) in enumerate((
+            ("XF86AudioMute", "Mute"), ("XF86AudioLowerVolume", "Vol −"), ("XF86AudioRaiseVolume", "Vol +"),
+            ("XF86AudioMicMute", "Mic"), ("XF86AudioPrev", "Prev"), ("XF86AudioPlay", "Play"),
+            ("XF86AudioNext", "Next")))]
+        + [("Print", "PrtSc", 15.5, 0, 1)]
+        + [(k, k, i, 1.25, 1) for i, k in enumerate("`1234567890-=")] + [("BackSpace", "⌫", 13, 1.25, 2)]
+        + [("Tab", "Tab", 0, 2.25, 1.5)] + [(k, k, 1.5 + i, 2.25, 1) for i, k in enumerate("QWERTYUIOP[]")]
+        + [("backslash", "\\", 13.5, 2.25, 1.5)]
+        + [("Caps_Lock", "Caps", 0, 3.25, 1.75)] + [(k, k, 1.75 + i, 3.25, 1) for i, k in enumerate("ASDFGHJKL;'")]
+        + [("Return", "Enter", 12.75, 3.25, 2.25)]
+        + [("SHIFT", "Shift", 0, 4.25, 2.25)] + [(k, k, 2.25 + i, 4.25, 1) for i, k in enumerate("ZXCVBNM,./")]
+        + [("SHIFT", "Shift", 12.25, 4.25, 2.75)]
+        + [("CTRL", "Ctrl", 0, 5.25, 1.25), ("SUPER", "Super", 1.25, 5.25, 1.25), ("ALT", "Alt", 2.5, 5.25, 1.25),
+           ("Space", "", 3.75, 5.25, 6.25), ("ALT", "Alt", 10, 5.25, 1.25), ("SUPER", "Super", 11.25, 5.25, 1.25),
+           ("Menu", "Menu", 12.5, 5.25, 1.25), ("CTRL", "Ctrl", 13.75, 5.25, 1.25)]
+        + [("up", "↑", 16.5, 4.25, 1), ("left", "←", 15.5, 5.25, 1), ("down", "↓", 16.5, 5.25, 1),
+           ("right", "→", 17.5, 5.25, 1)]
+    )
+    ALIASES = {"slash": "/", "period": ".", "comma": ",", "minus": "-", "equal": "=", "grave": "`",
+               "semicolon": ";", "apostrophe": "'", "bracketleft": "[", "bracketright": "]"}
+    SHORT = (("Move window to workspace ", "→ "), ("Go to workspace ", "ws "), ("Focus window ", "focus "),
+             ("Move window ", "move "), ("Screenshot ", "shot "), ("Open ", ""), (" (focus, or open it)", ""))
+    MODS = {"SUPER", "SHIFT", "ALT", "CTRL"}
+
+    def __init__(self, on_hover, on_run):
+        super().__init__()
+        self.on_hover, self.on_run = on_hover, on_run
+        w = max(x + kw for _, _, x, _, kw in self.LAYOUT)
+        h = max(y + 1 for _, _, _, y, _ in self.LAYOUT)
+        self.set_size_request(int(w * self.U), int(h * self.U))
+        self.add_events(Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.BUTTON_PRESS_MASK
+                        | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+        self.connect("draw", self.draw)
+        self.connect("motion-notify-event", self.motion)
+        self.connect("leave-notify-event", lambda *_: self.hover_at(None))
+        self.connect("button-press-event", self.click)
+        self.layers, self.layer, self.hovered = {}, frozenset({"SUPER"}), None
+
+    def load(self, lines):
+        """TSV lines -> {modifier set: {key: action}}."""
+        self.layers = {}
+        for line in lines:
+            parts = line.split("\t", 4)
+            if len(parts) < 5:
+                continue
+            keys = parts[0].split(" + ")
+            mods, key = frozenset(k for k in keys[:-1] if k in self.MODS), keys[-1]
+            key = self.ALIASES.get(key, key)
+            if key.startswith("mouse"):
+                continue
+            self.layers.setdefault(mods, {}).setdefault(key.lower(), dict(
+                keys=parts[0], group=parts[1], desc=parts[2], kind=parts[3], payload=parts[4]))
+        self.queue_draw()
+
+    def action(self, key):
+        return self.layers.get(self.layer, {}).get(key.lower())
+
+    def rect(self, x, y, w):
+        u, pad = self.U, self.PAD
+        return x * u + pad, y * u + pad, w * u - 2 * pad, u - 2 * pad
+
+    def key_at(self, px, py):
+        for key, _, x, y, w in self.LAYOUT:
+            rx, ry, rw, rh = self.rect(x, y, w)
+            if rx <= px <= rx + rw and ry <= py <= ry + rh:
+                return key
+        return None
+
+    def motion(self, _w, ev):
+        self.hover_at(self.key_at(ev.x, ev.y))
+
+    def hover_at(self, key):
+        if key != self.hovered:
+            self.hovered = key
+            self.on_hover(self.action(key) if key else None)
+            self.queue_draw()
+
+    def click(self, _w, ev):
+        key = self.key_at(ev.x, ev.y)
+        if key and key in self.MODS:
+            # clicking a modifier steps through the layers that use it
+            self.layer = frozenset(self.layer ^ {key}) if (self.layer ^ {key}) in self.layers else self.layer
+            self.queue_draw()
+        elif key and self.action(key):
+            self.on_run(self.action(key))
+        return True
+
+    def short(self, desc):
+        for long, brief in self.SHORT:
+            desc = desc.replace(long, brief)
+        return desc
+
+    def draw(self, _w, cr):
+        t = theme()["tokens"]
+        for key, cap, x, y, w in self.LAYOUT:
+            rx, ry, rw, rh = self.rect(x, y, w)
+            act = self.action(key)
+            held = key in self.layer
+            cr.new_sub_path()
+            r = 7
+            cr.arc(rx + rw - r, ry + r, r, -math.pi / 2, 0)
+            cr.arc(rx + rw - r, ry + rh - r, r, 0, math.pi / 2)
+            cr.arc(rx + r, ry + rh - r, r, math.pi / 2, math.pi)
+            cr.arc(rx + r, ry + r, r, math.pi, 3 * math.pi / 2)
+            cr.close_path()
+            if held:  # the modifiers of this layer: "you are here"
+                cr.set_source_rgba(*rgba(t["accent"]))
+            else:
+                cr.set_source_rgba(*rgba(t["text"], 0.10 if act else 0.035))
+            cr.fill_preserve()
+            hover = key == self.hovered and act
+            cr.set_source_rgba(*rgba(t["accent"] if hover else t["text"], 0.9 if hover else 0.14 if act else 0.06))
+            cr.set_line_width(1.5 if hover else 1)
+            cr.stroke()
+            ink = t["on_accent"] if held else t["text"] if act else t["muted"]
+            lay = self.create_pango_layout("")
+            lay.set_markup(f'<span font_family="JetBrainsMono Nerd Font" size="8.5pt" weight="bold" '
+                           f'foreground="{ink}" alpha="{100 if act or held else 55}%">'
+                           f'{GLib.markup_escape_text(cap)}</span>', -1)
+            cr.move_to(rx + 6, ry + 4)
+            PangoCairo.show_layout(cr, lay)
+            if act:
+                d = self.create_pango_layout("")
+                d.set_markup(f'<span font_family="Zen Kaku Gothic New" size="7pt" foreground="{t["text"]}">'
+                             f'{GLib.markup_escape_text(self.short(act["desc"]))}</span>', -1)
+                d.set_width(int((rw - 10) * 1024))
+                d.set_height(-2)                # at most two lines,
+                d.set_ellipsize(3)              # then …
+                d.set_wrap(0)                   # WORD
+                _, dh = d.get_pixel_size()
+                cr.move_to(rx + 5, ry + rh - dh - 4)
+                PangoCairo.show_layout(cr, d)
+        return False
+
+
 class Keys(Launcher):
-    """鍵 Every shortcut from hyprland.lua, as keycaps: search, then Enter runs it."""
+    """鍵 Every shortcut from hyprland.lua: a keyboard map first; typing turns it into a search list."""
     name = "keys"
-    width = 620
+    width = 1090
+    LAYERS = [("Super", {"SUPER"}), ("Super + Shift", {"SUPER", "SHIFT"}), ("Super + Ctrl", {"SUPER", "CTRL"}),
+              ("Alt", {"ALT"}), ("Shift", {"SHIFT"}), ("No modifier", set())]
     ROWS = 11
     TSV = HOME / ".cache/hypr-actions.tsv"  # written by hyprland.lua at each (re)load
     ORDER = ["Apps", "Windows", "Workspaces", "System", "Tools", "Media", "Help"]
@@ -1071,14 +1215,22 @@ class Keys(Launcher):
         self.entry.set_placeholder_text("Search shortcuts")
         self.listbox.set_sort_func(lambda a, b: (b.score > a.score) - (b.score < a.score) or a.order - b.order)
         self.listbox.set_header_func(self.head)
+        self.keymap = KeyMap(self.hint, self.launch)
+        self.win.connect("key-release-event", self.on_release)
+        self.chips = Gtk.Box(spacing=6)
+        self.info = label("", "mono")
+        self.map_mode = True   # Tab switches map <-> list; typing always shows the list
+        self.layer_before_shift = None
+
+    def lines(self):
+        try:
+            return self.TSV.read_text().splitlines()
+        except OSError:
+            return self.from_binds()
 
     def actions(self):
         rows, folded = [], set()
-        try:
-            lines = self.TSV.read_text().splitlines()
-        except OSError:
-            lines = self.from_binds()
-        for line in lines:
+        for line in self.lines():
             parts = line.split("\t", 4)
             if len(parts) < 5:
                 continue
@@ -1125,10 +1277,54 @@ class Keys(Launcher):
         esc.set_valign(Gtk.Align.CENTER)
         head.pack_start(esc, False, False, 0)
         self.box.pack_start(head, False, False, 0)
+        self.box.pack_start(self.chips, False, False, 2)
+        self.box.pack_start(self.keymap, False, False, 0)
         self.box.pack_start(self.scroll, False, False, 0)
         self.box.pack_start(self.empty, False, False, 0)
-        self.box.pack_start(label("↑↓ move · ↵ run it · type a key or a word", "mono"), False, False, 2)
+        self.box.pack_start(self.info, False, False, 2)
+        self.keymap.load(self.lines())
+        self.fill_chips()
         self.load_apps()
+
+    def fill_chips(self):
+        for c in self.chips.get_children():
+            self.chips.remove(c)
+        for name, mods in self.LAYERS:
+            mods = frozenset(mods)
+            if mods not in self.keymap.layers:
+                continue
+            b = Gtk.Button(label=name)
+            b.get_style_context().add_class("chip")
+            if mods == self.keymap.layer:
+                b.get_style_context().add_class("on")
+            b.connect("clicked", lambda _b, m=mods: self.set_layer(m))
+            self.chips.pack_start(b, False, False, 0)
+        self.chips.show_all()
+
+    def set_layer(self, mods):
+        self.keymap.layer = frozenset(mods)
+        self.keymap.hovered = None
+        self.fill_chips()
+        self.keymap.queue_draw()
+        self.hint(None)
+
+    def hint(self, act):
+        if not self.map_mode or self.entry.get_text().strip():
+            self.info.set_text("↑↓ move · ↵ run it · Tab: keyboard map")
+        elif act:
+            caps = " + ".join(self.NAMES.get(k, k) for k in act["keys"].split(" + "))
+            self.info.set_text(f"{caps} · {act['desc']}" + (" · click to run" if act["kind"] else ""))
+        else:
+            self.info.set_text("Hold Shift for Super + Shift · type to search · Tab: list")
+
+    def apply_mode(self):
+        as_map = self.map_mode and not self.entry.get_text().strip()
+        for w in (self.chips, self.keymap):
+            w.set_visible(as_map)
+        self.scroll.set_visible(not as_map)
+        if as_map:
+            self.empty.set_visible(False)
+        self.hint(None)
 
     def load_apps(self):
         for row in self.listbox.get_children():
@@ -1178,6 +1374,33 @@ class Keys(Launcher):
         if visible:
             self.listbox.select_row(min(visible, key=lambda r: (-r.score, r.order)))
             self.scroll.get_vadjustment().set_value(0)
+        if self.chips.get_parent():
+            self.apply_mode()
+
+    def on_key(self, w, ev):
+        if ev.keyval == Gdk.KEY_Tab and not self.entry.get_text().strip():
+            self.map_mode = not self.map_mode
+            self.apply_mode()
+            return True
+        if ev.keyval in (Gdk.KEY_Shift_L, Gdk.KEY_Shift_R) and self.keymap.get_visible():
+            shifted = frozenset(self.keymap.layer | {"SHIFT"})
+            if shifted in self.keymap.layers and self.layer_before_shift is None:
+                self.layer_before_shift = self.keymap.layer
+                self.set_layer(shifted)
+        return super().on_key(w, ev)
+
+    def on_release(self, _w, ev):
+        if ev.keyval in (Gdk.KEY_Shift_L, Gdk.KEY_Shift_R) and self.layer_before_shift is not None:
+            self.set_layer(self.layer_before_shift)
+            self.layer_before_shift = None
+        return False
+
+    def show(self):
+        self.map_mode = True
+        self.keymap.layer = frozenset({"SUPER"})
+        super().show()
+        self.chips.show_all()
+        self.apply_mode()
 
     def launch(self, a, new_window=False):
         if not a["kind"]:
@@ -1210,11 +1433,11 @@ class Popovers:
         self.items[name].show()
         self.open = name
 
-    def open_launcher(self, query):
-        if self.open != "launcher":
-            self.toggle("launcher")
-        self.items["launcher"].entry.set_text(query)
-        self.items["launcher"].entry.set_position(-1)
+    def open_with(self, name, query):
+        if self.open != name:
+            self.toggle(name)
+        self.items[name].entry.set_text(query)
+        self.items[name].entry.set_position(-1)
 
     def close(self):
         if self.open:
@@ -1262,8 +1485,8 @@ def watch_fifo(osd, pops):
             parts = raw.decode(errors="replace").split("\t")
             if len(parts) == 2 and parts[0] == "pop":
                 pops.toggle(parts[1])
-            elif len(parts) == 3 and parts[0] == "pop" and parts[1] == "launcher":
-                pops.open_launcher(parts[2])  # hypr-pop launcher <text>: open with a query
+            elif len(parts) == 3 and parts[0] == "pop" and parts[1] in ("launcher", "keys"):
+                pops.open_with(parts[1], parts[2])  # hypr-pop launcher|keys <text>: open with a query
             elif len(parts) == 4 and parts[2].isdigit():
                 osd_line = parts
         if osd_line:  # only the newest level matters when the knob spins fast

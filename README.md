@@ -22,8 +22,9 @@ folder icons and the wallpaper.
 - **Launcher** (Super+Space) — frequent apps first; searches names, descriptions and keywords.
   Enter focuses the app if it is already open; Shift+Enter opens a new window. Apps with their own
   key show it on the right.
-- **Shortcuts** (Super+/) — every described bind as keycaps, grouped; type a word or a key, Enter
-  runs it.
+- **Keymap** (Super+/) — a drawn keyboard: every key bound with Super shows what it does; hold
+  Shift (or pick a chip) for the Super+Shift layer, click a key to run it. Start typing and it turns
+  into a searchable list of every shortcut; Tab switches between the two.
 - **Notifications** slide in from the right edge one at a time; the stack never stretches.
 - **Theme manager** (Super+Shift+T) — six palettes, follow the sun (light by day, dark at night).
 - **Lock screen** with an ensō around the clock and the date in kanji.
@@ -117,7 +118,7 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 | | |
 |---|---|
 | `Super+Space` | app launcher (Enter = open or focus, Shift+Enter = new window) |
-| `Super+/` | all shortcuts, searchable |
+| `Super+/` | keymap: what every key does (type to search, hold Shift for Super+Shift) |
 | `hypr-focus-or-launch` | bind a key per app: focus it if open, start it if not |
 | `Super+Shift+T` | theme manager |
 | click the clock | calendar, quick settings, notifications |
