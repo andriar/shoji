@@ -844,7 +844,7 @@ class Launcher(Popover):
         self.box.pack_start(self.section, False, False, 2)
         self.box.pack_start(self.scroll, False, False, 0)
         self.box.pack_start(self.empty, False, False, 0)
-        self.box.pack_start(label("↑↓ move · ↵ open · type to search", "mono"), False, False, 2)
+        self.box.pack_start(label("↑↓ move · ↵ open or focus · Shift+↵ new window", "mono"), False, False, 2)
         self.load_apps()
 
     def load_apps(self):
@@ -920,6 +920,9 @@ class Launcher(Popover):
             self.scroll.get_vadjustment().set_value(0)
 
     def on_key(self, w, ev):
+        if ev.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and ev.state & Gdk.ModifierType.SHIFT_MASK:
+            self.launch_selected(new_window=True)
+            return True
         if ev.keyval in (Gdk.KEY_Down, Gdk.KEY_Up, Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
             down = ev.keyval in (Gdk.KEY_Down, Gdk.KEY_Tab)
             visible = sorted((r for r in self.rows if r.score > 0), key=lambda r: r.get_index())
@@ -937,19 +940,40 @@ class Launcher(Popover):
             return True
         return super().on_key(w, ev)
 
-    def launch_selected(self):
+    def launch_selected(self, new_window=False):
         row = self.listbox.get_selected_row()
         if row and row.score > 0:
-            self.launch(row.app)
+            self.launch(row.app, new_window)
 
-    def launch(self, app):
-        self.manager.close()
-        ctx = Gdk.Display.get_default().get_app_launch_context()
+    @staticmethod
+    def window_for(app):
+        """An open window of this app (Hyprland client), or None."""
+        names = {(app.get_id() or "").removesuffix(".desktop").lower()}
+        names.add(next(iter(names)).split(".")[-1])
+        if isinstance(app, Gio.DesktopAppInfo):
+            names.add((app.get_startup_wm_class() or "").lower())
+            names.add(Path(app.get_executable() or "").name.lower())
+        names.discard("")
         try:
-            app.launch([], ctx)
-        except GLib.Error as e:
-            print("launch:", e, file=sys.stderr, flush=True)
-            return
+            clients = json.loads(sh("hyprctl", "clients", "-j") or "[]")
+        except ValueError:
+            return None
+        hits = [c for c in clients if {c.get("class", "").lower(), c.get("initialClass", "").lower()} & names]
+        return min(hits, key=lambda c: c.get("focusHistoryID", 99)) if hits else None
+
+    def launch(self, app, new_window=False):
+        """Enter focuses the app if it is already open; Shift+Enter always opens a new one."""
+        self.manager.close()
+        win = None if new_window else self.window_for(app)
+        if win:
+            sh("hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{win["address"]}" }})')
+        else:
+            ctx = Gdk.Display.get_default().get_app_launch_context()
+            try:
+                app.launch([], ctx)
+            except GLib.Error as e:
+                print("launch:", e, file=sys.stderr, flush=True)
+                return
         # usage counts only rank the list; they must never stop an app from opening
         try:
             counts = self.counts()

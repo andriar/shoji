@@ -33,6 +33,8 @@ hl.layer_rule({ name = "shoji-cal", match = { namespace = "^hypr-calendar$" }, a
 -- keys
 hl.bind("SUPER + SHIFT + T", hl.dsp.exec_cmd("~/.local/bin/hypr-pop theme"))
 hl.bind("SUPER + Space",     hl.dsp.exec_cmd("~/.local/bin/hypr-pop launcher"))
+-- one key per app you live in: focus it if open, start it if not (example: Slack)
+hl.bind("SUPER + K", hl.dsp.exec_cmd("~/.local/bin/hypr-focus-or-launch slack gtk-launch com.slack.Slack"))
 hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("~/.local/bin/hypr-osd up"),   { locked = true, repeating = true })
 hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("~/.local/bin/hypr-osd down"), { locked = true, repeating = true })
 hl.bind("XF86AudioMute",        hl.dsp.exec_cmd("~/.local/bin/hypr-osd mute"), { locked = true })
@@ -68,6 +70,7 @@ layerrule = ignorealpha 0.2, ^(waybar|swaync-control-center|swaync-notification-
 
 bind = SUPER SHIFT, T, exec, ~/.local/bin/hypr-pop theme
 bind = SUPER, Space, exec, ~/.local/bin/hypr-pop launcher
+bind = SUPER, K, exec, ~/.local/bin/hypr-focus-or-launch slack gtk-launch com.slack.Slack
 bindel = , XF86AudioRaiseVolume, exec, ~/.local/bin/hypr-osd up
 bindel = , XF86AudioLowerVolume, exec, ~/.local/bin/hypr-osd down
 bindl  = , XF86AudioMute, exec, ~/.local/bin/hypr-osd mute

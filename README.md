@@ -18,6 +18,7 @@ folder icons and the wallpaper.
 - **Koyomi** — click the clock for a kanji calendar on top of quick settings and notifications.
 - **Popovers with one shape** — Sound (devices and volume), Network, Battery (laptops), Theme.
 - **Launcher** (Super+Space) — frequent apps first; searches names, descriptions and keywords.
+  Enter focuses the app if it is already open; Shift+Enter opens a new window.
 - **Theme manager** (Super+Shift+T) — six palettes, follow the sun (light by day, dark at night).
 - **Lock screen** with an ensō around the clock and the date in kanji.
 - **Paper folders** — Shoji draws its own folder icons in the palette; app icons come from Papirus.
@@ -86,7 +87,8 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 
 | | |
 |---|---|
-| `Super+Space` | app launcher |
+| `Super+Space` | app launcher (Enter = open or focus, Shift+Enter = new window) |
+| `hypr-focus-or-launch` | bind a key per app: focus it if open, start it if not |
 | `Super+Shift+T` | theme manager |
 | click the clock | calendar, quick settings, notifications |
 | click / scroll the ensō in the bar | sound devices / volume |

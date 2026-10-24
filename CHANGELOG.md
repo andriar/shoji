@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 — 2026-10-24
+
+- Launcher: Enter focuses the app's window when it is already open (Shift+Enter opens a new one).
+- `hypr-focus-or-launch CLASS_REGEX COMMAND`: one key per app — focus it if open, start it if not,
+  press again to cycle its windows. docs/hyprland.md has a Super+K → Slack example.
+
 ## 0.1.3 — 2026-10-24
 
 - Launcher: apps did not open (click or Enter). Usage counts were written under
