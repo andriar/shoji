@@ -75,8 +75,10 @@ on Hiru and Yuki. Point them at Shoji and they follow every palette switch:
 	features = shoji
 ```
 
-Apps that draw with fixed RGB colors need their own light/dark setting. In Claude Code, run
-`/theme` and pick a light theme when you use Hiru or Yuki.
+Apps that draw with fixed RGB colors need their own light/dark setting. Claude Code's `dark` theme
+writes white text, which disappears on Hiru and Yuki: run `/theme` and pick **Auto (match terminal)**
+(`"theme": "auto"` in `~/.claude/settings.json`). It reads the terminal background, so it follows
+every palette.
 
 ### 2. Run the installer
 
