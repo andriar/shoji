@@ -36,8 +36,15 @@ ICON_THEME = HOME / ".local/share/icons/Shoji"
 
 DARK_ANSI = ["#e0707a", "#a3b46f", "#d9b05a", "#7f9dcb", "#b49ac9", "#7fb8b5",
              "#ec8f97", "#b8c789", "#e6c47c", "#9cb4da", "#c7b1d9", "#9ccbc8"]
-LIGHT_ANSI = ["#a3303c", "#56682a", "#86661c", "#2e5185", "#7a4a8c", "#2f6f6a",
+
+LIGHT_ANSI = ["#a3303c", "#56682a", "#735716", "#2e5185", "#7a4a8c", "#2f6f6a",
               "#c0424e", "#6b7f36", "#9c7a26", "#3d64a0", "#8f5aa3", "#3c8580"]
+
+
+def diff_tint(dark):
+    """delta +/- line background: this much ok/alert over the ground (the most that keeps 4.5:1)."""
+    return 0.10 if dark else 0.07
+
 
 PALETTES = {
     "aizome": dict(kanji="藍染", name="Aizome", note="indigo · gold", dark=True, pair="yuki",
@@ -189,6 +196,8 @@ def generate(name):
           f"background = {t['base']}\nforeground = {t['text']}\n"
           f"cursor-color = {t['text']}\ncursor-text = {t['base']}\n"
           f"selection-background = {mix(t['base'], t['accent'], 0.28)}\nselection-foreground = {t['text']}\n"
+          # paper is opaque: a translucent light ground lets the wallpaper pull text below 4.5:1
+          f"background-opacity = {0.88 if p['dark'] else 1}\n"
           + "".join(f"palette = {i}={c}\n" for i, c in enumerate(ansi)))
 
     # starship: replace the generated palette block
@@ -238,12 +247,31 @@ def generate(name):
     render_folders(t, p["dark"])
     apply_gtk(name, t)
 
-    # fzf (sourced from ~/.zshrc)
-    write(CFG / "shoji/fzf.sh", f"# {header}\nexport FZF_DEFAULT_OPTS=\""
+    # shell env (sourced from ~/.zshrc): fzf colors; bat and delta highlight with the 16 terminal colors
+    write(CFG / "shoji/shell.sh", f"# {header}\nexport FZF_DEFAULT_OPTS=\""
           f"--color=bg+:{t['surface0']},bg:-1,spinner:{t['accent']},hl:{t['accent']}"
           f",fg:{t['text']},header:{t['muted']},info:{t['muted']},pointer:{t['accent']}"
           f",marker:{t['accent']},fg+:{t['text']},prompt:{t['accent']},hl+:{t['accent']}"
-          f",selected-bg:{t['surface1']},border:{t['surface2']},label:{t['text']}\"\n")
+          f",selected-bg:{t['surface1']},border:{t['surface2']},label:{t['text']}\"\n"
+          "export BAT_THEME=ansi\n")
+    write(CFG / "shoji/fzf.sh", f"# {header}\n. {CFG / 'shoji/shell.sh'}\n")  # older ~/.zshrc lines
+
+    # delta feature: [include] path = ~/.config/shoji/delta.gitconfig, then [delta] features = shoji
+    write(CFG / "shoji/delta.gitconfig", f"# {header}\n[delta \"shoji\"]\n"
+          f"\t{'dark' if p['dark'] else 'light'} = true\n\tsyntax-theme = ansi\n"
+          # a stronger tint would drop syntax colors below 4.5:1, so changed words get an underline
+          f"\tminus-style = syntax \"{mix(t['base'], t['alert'], diff_tint(p['dark']))}\"\n"
+          f"\tminus-emph-style = syntax \"{mix(t['base'], t['alert'], diff_tint(p['dark']))}\" ul\n"
+          f"\tplus-style = syntax \"{mix(t['base'], t['ok'], diff_tint(p['dark']))}\"\n"
+          f"\tplus-emph-style = syntax \"{mix(t['base'], t['ok'], diff_tint(p['dark']))}\" ul\n"
+          f"\tline-numbers-minus-style = \"{t['alert']}\"\n\tline-numbers-plus-style = \"{t['ok']}\"\n"
+          f"\tline-numbers-zero-style = \"{t['muted']}\"\n"
+          f"\tline-numbers-left-style = \"{t['surface2']}\"\n\tline-numbers-right-style = \"{t['surface2']}\"\n"
+          f"\tfile-style = \"{t['text']}\" bold\n\tfile-decoration-style = \"{t['surface2']}\" ul\n"
+          f"\thunk-header-style = file line-number syntax\n"
+          f"\thunk-header-decoration-style = \"{t['surface2']}\" box\n"
+          f"\tcommit-style = \"{t['accent']}\"\n\tcommit-decoration-style = \"{t['surface2']}\" box ul\n"
+          f"\tblame-palette = \"{t['base']} {t['mantle']}\"\n")
 
     # widgets + renders
     write(CFG / "shoji/current.json", json.dumps(dict(id=name, **{k: v for k, v in p.items() if k not in ("sky", "hills")},
@@ -583,6 +611,9 @@ def cmd_doctor(name):
         print(f"  {k:<7} {t[k]}  {cr:5.2f}  {'pass' if cr >= 4.5 else 'FAIL'}")
     low = [f"{i}" for i, c in enumerate(ansi_colors(name)) if i and contrast(c, t["base"]) < 4.5]
     print(f"  terminal 16 colors  {'pass' if not low else 'FAIL ' + ','.join(low)}")
+    on_diff = [c for i, c in enumerate(ansi_colors(name)) if i and not (PALETTES[name]["dark"] and i == 8)]
+    cr = min(contrast(c, mix(t["base"], t[k], diff_tint(PALETTES[name]["dark"]))) for k in ("ok", "alert") for c in on_diff)
+    print(f"  diff lines (delta)  {cr:5.2f}  {'pass' if cr >= 4.5 else 'FAIL'}")
     cr = contrast(t["on_accent"], t["accent"])
     print(f"  on_accent on accent {cr:5.2f}  {'pass' if cr >= 4.5 else 'FAIL'}")
     fonts = subprocess.run(["fc-list", ":", "family"], capture_output=True, text=True).stdout

@@ -10,7 +10,7 @@ folder icons and the wallpaper.
 
 - **Six palettes** — 藍染 Aizome (indigo · gold, default), 夜 Yoru (ink · vermilion),
   夜桜 Yozakura (night · sakura), 苔 Koke (moss), 昼 Hiru (washi, light), 雪 Yuki (snow, light).
-  Text, secondary text, accent and all 16 terminal colors pass WCAG 4.5:1 on every palette.
+  Text, secondary text, accent, all 16 terminal colors and diff lines pass WCAG 4.5:1 on every palette.
 - **Ensō levels** — volume, mic and brightness show as an open brush circle in the top right,
   even with Do Not Disturb on. A keyboard volume knob grows the stroke.
 - **One quiet bar** — workspaces as 一 二 三 四 (the current one is a seal; switch to 1 2 3 4 if you
@@ -56,6 +56,27 @@ sudo pacman -S hyprland waybar swaync fuzzel hyprlock hyprpaper wireplumber libp
 
 Optional: `ghostty` and `starship` (terminal colors and the `❯` prompt), `btop`, `qt6ct`,
 `brightnessctl` and `power-profiles-daemon` (laptops: brightness ensō, battery popover).
+
+### Terminal tools (optional)
+
+`bat`, `delta` and `fzf` keep their own themes, so a dark theme like Catppuccin Mocha is unreadable
+on Hiru and Yuki. Point them at Shoji and they follow every palette switch:
+
+```sh
+# ~/.zshrc or ~/.bashrc: fzf colors and BAT_THEME=ansi (bat uses the 16 terminal colors)
+[ -f ~/.config/shoji/shell.sh ] && source ~/.config/shoji/shell.sh
+```
+
+```ini
+# ~/.gitconfig: delta diff colors from the palette
+[include]
+	path = ~/.config/shoji/delta.gitconfig
+[delta]
+	features = shoji
+```
+
+Apps that draw with fixed RGB colors need their own light/dark setting. In Claude Code, run
+`/theme` and pick a light theme when you use Hiru or Yuki.
 
 ### 2. Run the installer
 
