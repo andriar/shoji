@@ -29,12 +29,20 @@ hl.layer_rule({ name = "shoji-blur",
 hl.layer_rule({ name = "shoji-osd", match = { namespace = "^hypr-osd$" }, animation = "popin 90%" })
 hl.layer_rule({ name = "shoji-pop", match = { namespace = "^hypr-pop$" }, animation = "popin 96%" })
 hl.layer_rule({ name = "shoji-cal", match = { namespace = "^hypr-calendar$" }, animation = "slide top" })
+-- toasts slide in through swaync CSS; Hyprland's layer animation stretches the stack when it resizes
+hl.layer_rule({ name = "shoji-toasts", match = { namespace = "^swaync-notification-window$" }, no_anim = true })
 
 -- keys
 hl.bind("SUPER + SHIFT + T", hl.dsp.exec_cmd("~/.local/bin/hypr-pop theme"))
 hl.bind("SUPER + Space",     hl.dsp.exec_cmd("~/.local/bin/hypr-pop launcher"))
--- one key per app you live in: focus it if open, start it if not (example: Slack)
-hl.bind("SUPER + K", hl.dsp.exec_cmd("~/.local/bin/hypr-focus-or-launch slack gtk-launch com.slack.Slack"))
+-- every bind with a description ("Group: what it does") shows up here, as keycaps
+hl.bind("SUPER + slash",     hl.dsp.exec_cmd("~/.local/bin/hypr-pop keys"), { description = "Help: All shortcuts" })
+-- one key per app you live in: focus it if open (again = next window), start it if not.
+-- The launcher shows the key next to the app when the command is `gtk-launch <desktop id>`.
+hl.bind("SUPER + K", hl.dsp.exec_cmd("~/.local/bin/hypr-focus-or-launch slack gtk-launch com.slack.Slack"),
+        { description = "Apps: Slack" })
+hl.bind("SUPER + B", hl.dsp.exec_cmd("~/.local/bin/hypr-focus-or-launch '^google-chrome$' gtk-launch google-chrome"),
+        { description = "Apps: Browser" })
 hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("~/.local/bin/hypr-osd up"),   { locked = true, repeating = true })
 hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("~/.local/bin/hypr-osd down"), { locked = true, repeating = true })
 hl.bind("XF86AudioMute",        hl.dsp.exec_cmd("~/.local/bin/hypr-osd mute"), { locked = true })
@@ -67,10 +75,13 @@ decoration { rounding = 18 }
 
 layerrule = blur, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop)$
 layerrule = ignorealpha 0.2, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop)$
+layerrule = noanim, ^(swaync-notification-window)$
 
 bind = SUPER SHIFT, T, exec, ~/.local/bin/hypr-pop theme
 bind = SUPER, Space, exec, ~/.local/bin/hypr-pop launcher
-bind = SUPER, K, exec, ~/.local/bin/hypr-focus-or-launch slack gtk-launch com.slack.Slack
+bindd = SUPER, slash, Help: All shortcuts, exec, ~/.local/bin/hypr-pop keys
+bindd = SUPER, K, Apps: Slack, exec, ~/.local/bin/hypr-focus-or-launch slack gtk-launch com.slack.Slack
+bindd = SUPER, B, Apps: Browser, exec, ~/.local/bin/hypr-focus-or-launch '^google-chrome$' gtk-launch google-chrome
 bindel = , XF86AudioRaiseVolume, exec, ~/.local/bin/hypr-osd up
 bindel = , XF86AudioLowerVolume, exec, ~/.local/bin/hypr-osd down
 bindl  = , XF86AudioMute, exec, ~/.local/bin/hypr-osd mute

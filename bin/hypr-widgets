@@ -5,8 +5,9 @@
             hypr-osd writes "icon<TAB>title<TAB>percent<TAB>muted" lines to $FIFO.
   calendar  Koyomi: kanji week, today as a seal; sits left of the swaync control center
             while it is open (follows swaync's SubscribeV2 cc_open signal).
-  popovers  Sound (devices + volume), Network, and the Theme manager.
-            hypr-pop writes "pop<TAB>audio|network|theme" to $FIFO; the same line again closes it.
+  popovers  Sound (devices + volume), Network, Battery, the Theme manager, the launcher and the
+            shortcuts sheet. hypr-pop writes "pop<TAB>audio|network|battery|theme|launcher|keys" to $FIFO;
+            the same line again closes it.
 
 Colors: ~/.config/waybar/colors.css for GTK CSS and ~/.config/shoji/current.json for cairo,
 both written by `shoji apply`, re-read on every show.
@@ -42,6 +43,7 @@ LUCIDE = json.loads((HOME / ".local/share/fonts/Shoji/lucide-info.json").read_te
 CC_WIDTH = 420      # swaync control-center-width
 GAP = 8
 OSD_MS = 1400
+OSD_TWEEN_MS = 240
 WEEK_K = "日月火水木金土"  # Sunday first, like the calendar grid
 
 
@@ -157,6 +159,17 @@ list { background: transparent; }
 .app-row .desc { font-size: 11px; color: @muted; }
 .app-row .dot { min-width: 7px; min-height: 7px; border-radius: 2px; }
 .app-row:selected .dot { background: @accent; }
+
+/* shortcuts sheet */
+.key-row { background: transparent; border-radius: 9px; padding: 5px 10px; min-height: 30px; }
+.key-row:hover { background: @hover; }
+.key-row:selected { background: alpha(@text, 0.10); }
+.key-row .desc { font-size: 12.5px; color: @text; }
+.key-row .group { font-size: 10.5px; color: @muted; }
+.cap { font-family: "JetBrainsMono Nerd Font"; font-size: 11px; color: @text; background: @group;
+       border: 1px solid @edge; border-bottom-width: 2px; border-radius: 5px; padding: 1px 7px; min-width: 12px; }
+.key-row:selected .cap { border-color: alpha(@accent, 0.6); }
+.key-head { font-size: 10.5px; letter-spacing: 1px; color: @muted; padding: 10px 10px 2px; }
 """
 
 provider = Gtk.CssProvider()
@@ -251,6 +264,8 @@ class Osd:
         self.win.connect("realize", click_through)
         self.timer = 0
         self.pct, self.muted, self.kind = 0, False, "vol"
+        # the arc and the number glide to a new level instead of jumping (easeOutCubic)
+        self.shown, self.tween, self.ticking = 0.0, None, False
 
     def draw(self, _w, cr):
         t = theme()["tokens"]
@@ -264,12 +279,12 @@ class Osd:
         cr.set_line_width(1)
         cr.stroke()
         col = rgba(t["muted"] if self.muted else t["accent"])
-        enso(cr, c, c, c - 15, 0 if self.muted else self.pct / 100, col, 6, track=rgba(t["text"], 0.12))
+        enso(cr, c, c, c - 15, self.shown / 100, col, 6, track=rgba(t["text"], 0.12))
         # number + label
         layout = self.area.create_pango_layout("")
         layout.set_markup(
             f'<span font_family="Shippori Mincho" weight="bold" size="21pt" foreground="{t["muted"] if self.muted else t["text"]}">'
-            f'{"off" if self.muted else self.pct}</span>', -1)
+            f'{"off" if self.muted else round(self.shown)}</span>', -1)
         w, h = layout.get_pixel_size()
         cr.move_to(c - w / 2, c - h / 2 - 6)
         PangoCairo.show_layout(cr, layout)
@@ -288,11 +303,28 @@ class Osd:
         low = title.lower()
         self.kind = "mic" if low.startswith("micro") else "bri" if low.startswith("bright") else "vol"
         self.pct, self.muted = max(0, min(100, pct)), muted
-        self.area.queue_draw()
+        self.tween = (self.shown, 0 if muted else self.pct, None)
+        if not self.ticking:
+            self.ticking = True
+            self.area.add_tick_callback(self.step)
         self.win.show()
         if self.timer:
             GLib.source_remove(self.timer)
         self.timer = GLib.timeout_add(OSD_MS, self.hide)
+
+    def step(self, _w, clock):
+        start, goal, t0 = self.tween
+        now = clock.get_frame_time()
+        if t0 is None:
+            t0 = now
+            self.tween = (start, goal, t0)
+        x = min(1.0, (now - t0) / (OSD_TWEEN_MS * 1000))
+        self.shown = start + (goal - start) * (1 - (1 - x) ** 3)
+        self.area.queue_draw()
+        if x >= 1:
+            self.ticking = False
+            return GLib.SOURCE_REMOVE
+        return GLib.SOURCE_CONTINUE
 
     def hide(self):
         self.timer = 0
@@ -795,6 +827,21 @@ class Battery(Popover):
         self.box.show_all()
 
 
+def app_shortcuts():
+    """desktop id -> "Super K" for every hyprland.lua key that starts an app with gtk-launch."""
+    found = {}
+    try:
+        lines = (HOME / ".cache/hypr-actions.tsv").read_text().splitlines()
+    except OSError:
+        return found
+    for line in lines:
+        parts = line.split("\t", 4)
+        if len(parts) == 5 and parts[3] == "cmd" and "gtk-launch " in parts[4]:
+            app_id = parts[4].split("gtk-launch ", 1)[1].split()[0].removesuffix(".desktop")
+            found.setdefault(app_id, " ".join(Keys.NAMES.get(k, k) for k in parts[0].split(" + ")))
+    return found
+
+
 class Launcher(Popover):
     """探 Search apps: frequent apps first, typed text matches name, generic name, keywords."""
     name = "launcher"
@@ -852,6 +899,7 @@ class Launcher(Popover):
             self.listbox.remove(row)
         self.rows = []
         counts = self.counts()
+        shortcuts = app_shortcuts()
         for app in Gio.AppInfo.get_all():
             if not app.should_show():
                 continue
@@ -872,6 +920,11 @@ class Launcher(Popover):
                 d.set_ellipsize(3)
                 text.pack_start(d, False, False, 0)
             line.pack_start(text, True, True, 0)
+            hint = shortcuts.get((app.get_id() or "").removesuffix(".desktop"))
+            if hint:
+                k = label(hint, "kbd")
+                k.set_valign(Gtk.Align.CENTER)
+                line.pack_start(k, False, False, 0)
             dot = Gtk.Box()
             dot.get_style_context().add_class("dot")
             dot.set_valign(Gtk.Align.CENTER)
@@ -997,12 +1050,152 @@ class Launcher(Popover):
         self.entry.grab_focus()
 
 
+class Keys(Launcher):
+    """鍵 Every shortcut from hyprland.lua, as keycaps: search, then Enter runs it."""
+    name = "keys"
+    width = 620
+    ROWS = 11
+    TSV = HOME / ".cache/hypr-actions.tsv"  # written by hyprland.lua at each (re)load
+    ORDER = ["Apps", "Windows", "Workspaces", "System", "Tools", "Media", "Help"]
+    NAMES = {"SUPER": "Super", "SHIFT": "Shift", "ALT": "Alt", "CTRL": "Ctrl", "slash": "/",
+             "Return": "Enter", "Escape": "Esc", "Print": "PrtSc", "period": ".", "Space": "Space",
+             "XF86AudioRaiseVolume": "Vol +", "XF86AudioLowerVolume": "Vol −", "XF86AudioMute": "Mute",
+             "XF86AudioMicMute": "Mic mute", "XF86AudioPlay": "Play", "XF86AudioNext": "Next",
+             "XF86AudioPrev": "Prev", "left": "←", "right": "→", "up": "↑", "down": "↓"}
+    # rows that differ only by one key collapse into one line (keys, description)
+    FOLD = {"Go to workspace": "1 … 0", "Move window to workspace": "1 … 0",
+            "Focus window": "← ↑ → ↓", "Move window": "← ↑ → ↓"}
+
+    def __init__(self, manager):
+        super().__init__(manager)
+        self.entry.set_placeholder_text("Search shortcuts")
+        self.listbox.set_sort_func(lambda a, b: (b.score > a.score) - (b.score < a.score) or a.order - b.order)
+        self.listbox.set_header_func(self.head)
+
+    def actions(self):
+        rows, folded = [], set()
+        try:
+            lines = self.TSV.read_text().splitlines()
+        except OSError:
+            lines = self.from_binds()
+        for line in lines:
+            parts = line.split("\t", 4)
+            if len(parts) < 5:
+                continue
+            keys, group, desc, kind, payload = parts
+            caps = [self.NAMES.get(k, k) for k in keys.split(" + ")]
+            for stem, last in self.FOLD.items():
+                tail = desc[len(stem):].strip()
+                if desc.startswith(stem) and (tail.isdigit() or tail in ("left", "right", "up", "down")):
+                    if stem in folded:
+                        caps = None
+                    else:
+                        folded.add(stem)
+                        caps, desc, kind = caps[:-1] + [last], stem, ""
+                    break
+            if caps:
+                rows.append(dict(caps=caps, group=group, desc=desc, kind=kind, payload=payload))
+        rank = {g: i for i, g in enumerate(self.ORDER)}
+        rows.sort(key=lambda r: rank.get(r["group"], len(self.ORDER)))
+        return rows
+
+    @staticmethod
+    def from_binds():
+        """Without the hyprland.lua table: every bind that has a description ("Group: what it does")."""
+        try:
+            binds = json.loads(sh("hyprctl", "binds", "-j") or "[]")
+        except ValueError:
+            return []
+        lines = []
+        for bnd in binds:
+            if not bnd.get("has_description") or bnd.get("mouse") or bnd["key"].startswith("mouse"):
+                continue
+            mods = [m for bit, m in ((64, "SUPER"), (4, "CTRL"), (8, "ALT"), (1, "SHIFT")) if bnd["modmask"] & bit]
+            group, _, desc = bnd["description"].rpartition(": ")
+            kind = "cmd" if bnd["dispatcher"] == "exec" else ""
+            lines.append("\t".join([" + ".join(mods + [bnd["key"]]), group or "Other", desc, kind, bnd["arg"]]))
+        return lines
+
+    def build(self):
+        head = Gtk.Box(spacing=10)
+        head.get_style_context().add_class("searchbar")
+        head.pack_start(label(icon("keyboard"), "icon", xalign=0.5), False, False, 0)
+        head.pack_start(self.entry, True, True, 0)
+        esc = label("Esc", "kbd")
+        esc.set_valign(Gtk.Align.CENTER)
+        head.pack_start(esc, False, False, 0)
+        self.box.pack_start(head, False, False, 0)
+        self.box.pack_start(self.scroll, False, False, 0)
+        self.box.pack_start(self.empty, False, False, 0)
+        self.box.pack_start(label("↑↓ move · ↵ run it · type a key or a word", "mono"), False, False, 2)
+        self.load_apps()
+
+    def load_apps(self):
+        for row in self.listbox.get_children():
+            self.listbox.remove(row)
+        self.rows = []
+        for i, a in enumerate(self.actions()):
+            row = Gtk.ListBoxRow()
+            row.get_style_context().add_class("key-row")
+            row.app, row.order, row.score = a, i, 1
+            line = Gtk.Box(spacing=12)
+            caps = Gtk.Box(spacing=4)
+            caps.set_size_request(170, -1)
+            for c in a["caps"]:
+                cap = label(c, "cap", xalign=0.5)
+                cap.set_valign(Gtk.Align.CENTER)
+                caps.pack_start(cap, False, False, 0)
+            line.pack_start(caps, False, False, 0)
+            d = label(a["desc"], "desc")
+            d.set_ellipsize(3)
+            line.pack_start(d, True, True, 0)
+            row.group = label(a["group"], "group")
+            row.group.set_no_show_all(True)  # only search results name their group
+            line.pack_start(row.group, False, False, 0)
+            row.add(line)
+            row.keys = [a["desc"].lower(), " ".join(a["caps"]).lower(), a["group"].lower()]
+            self.listbox.add(row)
+            self.rows.append(row)
+
+    def head(self, row, before):
+        """Group titles only while browsing; search results are one ranked list."""
+        if self.entry.get_text().strip() or (before and before.app["group"] == row.app["group"]):
+            row.set_header(None)
+            return
+        row.set_header(label(row.app["group"].upper(), "key-head"))
+
+    def refilter(self):
+        q = self.entry.get_text().strip().lower()
+        for row in self.rows:
+            row.score = (self.match(q, row.keys) if q else 1) or 0
+            row.group.set_visible(bool(q))
+        self.listbox.invalidate_filter()
+        self.listbox.invalidate_sort()
+        self.listbox.invalidate_headers()
+        visible = [r for r in self.rows if r.score > 0]
+        self.empty.set_text(f"No shortcut matches “{q}”." if q and not visible else "")
+        self.empty.set_visible(bool(q and not visible))
+        if visible:
+            self.listbox.select_row(min(visible, key=lambda r: (-r.score, r.order)))
+            self.scroll.get_vadjustment().set_value(0)
+
+    def launch(self, a, new_window=False):
+        if not a["kind"]:
+            return  # a folded row (1 … 0, arrows) needs the real key
+        self.manager.close()
+        if a["kind"] == "cmd":
+            subprocess.Popen(["setsid", "-f", "sh", "-c", a["payload"]])
+        else:
+            sh("hyprctl", "dispatch", a["payload"])
+
+
 class Popovers:
     def __init__(self):
         self.backdrop = Backdrop(self.close)
         self.items = {cls.name: cls(self) for cls in (Sound, Network, Battery)}
         self.items["theme"] = ThemeManager(self)
         self.items["launcher"] = Launcher(self)
+        self.items["keys"] = Keys(self)
         self.open = None
         GLib.timeout_add_seconds(300, self.sun_tick)
 

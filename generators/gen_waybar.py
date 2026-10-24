@@ -2,7 +2,7 @@
 """Shoji bar: writes ~/.config/waybar/{config.jsonc,style.css}. Run after editing; waybar reloads on SIGUSR2.
 
 One paper strip, three zones:
-  left    search · workspaces 一二三四 (seal = current) · window title
+  left    search · workspaces 一二三四 (seal = current; shoji-ws, clickable) · window title
   center  time + weekday kanji · unread dot          (click: Koyomi panel = swaync + calendar)
   right   load · on-only indicators · network · mic · ensō volume · battery · tray
 Icons are Lucide (font family "lucide"); private-use glyphs are written with chr(), never typed.
@@ -14,36 +14,31 @@ W = Path.home() / ".config/waybar"
 ICONS = json.loads((Path.home() / ".local/share/fonts/Shoji/lucide-info.json").read_text())
 
 
-PREFS = Path.home() / ".config/shoji/prefs.json"
-try:
-    NUMERALS = json.loads(PREFS.read_text()).get("numerals", "kanji")
-except (OSError, ValueError):
-    NUMERALS = "kanji"
-
-
 def L(name):
     return chr(int(ICONS[name]["encodedCode"].lstrip("\\"), 16))
 
 
 BIN = "~/.local/bin"
+WS = [f"custom/ws#w{n}" for n in range(1, 11)]
 cfg = {
     "layer": "top", "position": "top", "height": 30,
     "margin-top": 6, "margin-left": 10, "margin-right": 10, "spacing": 0,
-    "modules-left": ["custom/launcher", "hyprland/workspaces", "hyprland/window"],
+    "modules-left": ["custom/launcher", "custom/ws-watch", *WS, "hyprland/window"],
     "modules-center": ["custom/clock", "custom/notification"],
     "modules-right": ["custom/record", "custom/system", "custom/keepawake", "custom/nightlight",
                       "network", "pulseaudio#mic", "image#vol", "pulseaudio", "image#bat", "battery", "group/tray"],
 
     "custom/launcher": {"format": L("search"), "tooltip-format": "Search apps (Super+Space)",
                         "on-click": f"{BIN}/hypr-pop launcher"},
-    "hyprland/workspaces": {
-        "format": "{icon}",
-        "format-icons": {str(i): k for i, k in enumerate("一二三四五六七八九十", start=1)}
-        if NUMERALS == "kanji" else {str(i): str(i) for i in range(1, 11)},
-        "persistent-workspaces": {"*": 4},
-        "on-scroll-up": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e-1\" })'",
-        "on-scroll-down": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e+1\" })'",
-    },
+    # hyprland/workspaces clicks send `dispatch workspace N`, which Lua-mode Hyprland rejects:
+    # shoji-ws watches Hyprland and these buttons dispatch the Lua way
+    "custom/ws-watch": {"exec": f"{BIN}/shoji-ws watch", "tooltip": False},
+    **{m: {"exec": f"cat $XDG_RUNTIME_DIR/shoji-ws/{n} 2>/dev/null", "return-type": "json",
+           "interval": "once", "signal": 7,
+           "on-click": f"hyprctl dispatch 'hl.dsp.focus({{ workspace = {n} }})'",
+           "on-scroll-up": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e-1\" })'",
+           "on-scroll-down": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e+1\" })'"}
+       for n, m in enumerate(WS, start=1)},
     "hyprland/window": {"format": "{title}", "max-length": 56, "separate-outputs": True,
                         "rewrite": {"(.*) — Mozilla Firefox": "$1", "(.*) - Google Chrome": "$1"}},
 
@@ -132,7 +127,7 @@ tooltip { background: @elev3; border: 1px solid @edge; border-radius: 10px; }
 tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
 
 /* every clickable thing */
-#custom-launcher, #workspaces button, #window, #custom-clock, #custom-notification, #custom-record,
+#custom-launcher, #custom-ws, #window, #custom-clock, #custom-notification, #custom-record,
 #custom-system, #custom-keepawake, #custom-nightlight, #network, #pulseaudio, #image, #battery, #tray {
   padding: 0 7px;
   margin: 3px 1px;
@@ -141,7 +136,7 @@ tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
   color: @text;
   transition: background 150ms ease-out, color 150ms ease-out;
 }
-#custom-launcher:hover, #workspaces button:hover, #custom-clock:hover, #custom-notification:hover,
+#custom-launcher:hover, #custom-ws:hover, #custom-clock:hover, #custom-notification:hover,
 #custom-system:hover, #network:hover, #pulseaudio:hover, #image:hover {
   background: @hover;
 }
@@ -149,8 +144,9 @@ tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
 #custom-launcher { font-size: 13px; padding: 0 8px; }
 
 /* workspaces: seal = current, bright = has windows, dim = empty */
-#workspaces { margin: 0 2px; }
-#workspaces button {
+#custom-ws.w1 { margin-left: 3px; }
+#custom-ws.w10 { margin-right: 3px; }
+#custom-ws {
   font-family: "Shippori Mincho";
   font-size: 13px;
   font-weight: 500;
@@ -160,10 +156,10 @@ tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
   background-image: none;
   box-shadow: none;
 }
-#workspaces button:not(.empty) { color: @text; }
-#workspaces button.active { background: @accent; color: @on_accent; font-weight: 700; }
-#workspaces button.active:hover { background: @accent; }
-#workspaces button.urgent { background: alpha(@alert, 0.30); color: @text; }
+#custom-ws.occupied { color: @text; }
+#custom-ws.active { background: @accent; color: @on_accent; font-weight: 700; }
+#custom-ws.active:hover { background: @accent; }
+#custom-ws.urgent { background: alpha(@alert, 0.30); color: @text; }
 
 #window { color: @muted; padding-left: 8px; }
 window#waybar.empty #window { background: transparent; }

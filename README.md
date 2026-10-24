@@ -12,13 +12,19 @@ folder icons and the wallpaper.
   夜桜 Yozakura (night · sakura), 苔 Koke (moss), 昼 Hiru (washi, light), 雪 Yuki (snow, light).
   Text, secondary text, accent, all 16 terminal colors and diff lines pass WCAG 4.5:1 on every palette.
 - **Ensō levels** — volume, mic and brightness show as an open brush circle in the top right,
-  even with Do Not Disturb on. A keyboard volume knob grows the stroke.
+  even with Do Not Disturb on. A keyboard volume knob grows the stroke; the arc and the number
+  glide to the new level.
 - **One quiet bar** — workspaces as 一 二 三 四 (the current one is a seal; switch to 1 2 3 4 if you
-  prefer), the time with the weekday in kanji, Lucide icons, app tray icons tucked behind ⋯.
+  prefer; click or scroll to switch), the time with the weekday in kanji, Lucide icons, app tray
+  icons tucked behind ⋯.
 - **Koyomi** — click the clock for a kanji calendar on top of quick settings and notifications.
 - **Popovers with one shape** — Sound (devices and volume), Network, Battery (laptops), Theme.
 - **Launcher** (Super+Space) — frequent apps first; searches names, descriptions and keywords.
-  Enter focuses the app if it is already open; Shift+Enter opens a new window.
+  Enter focuses the app if it is already open; Shift+Enter opens a new window. Apps with their own
+  key show it on the right.
+- **Shortcuts** (Super+/) — every described bind as keycaps, grouped; type a word or a key, Enter
+  runs it.
+- **Notifications** slide in from the right edge one at a time; the stack never stretches.
 - **Theme manager** (Super+Shift+T) — six palettes, follow the sun (light by day, dark at night).
 - **Lock screen** with an ensō around the clock and the date in kanji.
 - **Paper folders** — Shoji draws its own folder icons in the palette; app icons come from Papirus.
@@ -111,6 +117,7 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 | | |
 |---|---|
 | `Super+Space` | app launcher (Enter = open or focus, Shift+Enter = new window) |
+| `Super+/` | all shortcuts, searchable |
 | `hypr-focus-or-launch` | bind a key per app: focus it if open, start it if not |
 | `Super+Shift+T` | theme manager |
 | click the clock | calendar, quick settings, notifications |
@@ -134,6 +141,9 @@ wallpaper sky and hills), then `shoji doctor <name>` to check contrast and `shoj
   popovers, theme manager and launcher.
 - `generators/` — the waybar and swaync configs, generated so icons and buttons match what is
   installed.
+- `bin/shoji-ws` — workspace buttons for waybar. Its `hyprland/workspaces` module switches with
+  `dispatch workspace N`, which Hyprland's Lua config rejects, so the buttons are custom modules that
+  dispatch `hl.dsp.focus({ workspace = N })`.
 
 ## Status
 

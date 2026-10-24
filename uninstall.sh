@@ -6,7 +6,7 @@ last="$HOME/.local/share/shoji/last-backup"
 backup=$(cat "$last")
 echo "Restoring $backup"
 tar xzf "$backup" -C "$HOME"
-for f in shoji hypr-widgets hypr-pop shoji-level shoji-clock; do
+for f in shoji hypr-widgets hypr-pop shoji-level shoji-clock shoji-ws; do
   tar tzf "$backup" | grep -qx ".local/bin/$f" || rm -f "$HOME/.local/bin/$f"
 done
 pkill -f "$HOME/.local/bin/hypr-widgets" 2>/dev/null || true

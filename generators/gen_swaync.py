@@ -225,6 +225,16 @@ progressbar { margin-top: 6px; }
 progressbar trough { min-height: 4px; border-radius: 2px; background: @track; }
 progressbar progress { min-height: 4px; border-radius: 2px; background: @accent; }
 .widget-dnd, .widget-inhibitors { margin: 4px 8px; color: @text; }
+/* toasts: the newest slides in from the right edge. Hyprland's own layer animation (no_anim for
+   swaync-notification-window) stretched the stack whenever it grew or shrank. Margins add up to
+   16px in every frame, so the text never rewraps. */
+@keyframes toast-in {
+  from { opacity: 0; margin-left: 32px; margin-right: -16px; }
+  to   { opacity: 1; margin-left: 8px;  margin-right: 8px; }
+}
+.floating-notifications .notification-row:first-child .notification {
+  animation: toast-in 300ms cubic-bezier(0.23, 1, 0.32, 1);
+}
 '''
 (D / "style.css").write_text(css)
 print("ok")

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Open (or close, if already open) a Shoji popover drawn by hypr-widgets.
-# Usage: hypr-pop audio|network|theme|launcher
+# Usage: hypr-pop audio|network|battery|theme|launcher [query]|keys
 # Falls back to the old tools when hypr-widgets is not running.
 fifo=${XDG_RUNTIME_DIR:-/tmp}/hypr-osd.fifo
 pid=$(cat "${XDG_RUNTIME_DIR:-/tmp}/hypr-widgets.pid" 2>/dev/null)
@@ -13,4 +13,5 @@ case "$1" in
   network) exec ~/.local/bin/hypr-toggle-app nm-connection-editor nm-connection-editor ;;
   theme)   exec ~/.local/bin/shoji toggle ;;
   launcher) exec fuzzel ;;
+  keys)    hyprctl binds -j | python3 -c 'import json, sys; [print(b["description"]) for b in json.load(sys.stdin) if b.get("has_description")]' | exec fuzzel --dmenu --prompt="keys  " ;;
 esac
