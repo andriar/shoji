@@ -14,6 +14,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("waybar")
     hl.exec_cmd("swaync")
     hl.exec_cmd("~/.local/bin/hypr-widgets")     -- ensō OSD, Koyomi calendar, popovers, theme manager
+    hl.exec_cmd("~/.local/bin/hypr-term --service")  -- optional: keeps one ghostty running for instant windows
     hl.exec_cmd("~/.local/bin/shoji wallpaper")  -- ink-mountain wallpaper via awww, hyprpaper or swaybg
 end)
 
@@ -35,6 +36,8 @@ hl.layer_rule({ name = "shoji-toasts", match = { namespace = "^swaync-notificati
 -- keys
 hl.bind("SUPER + SHIFT + T", hl.dsp.exec_cmd("~/.local/bin/hypr-pop theme"))
 hl.bind("SUPER + Space",     hl.dsp.exec_cmd("~/.local/bin/hypr-pop launcher"))
+-- ghostty opens in ~70 ms instead of ~1 s: a D-Bus action on the running instance
+hl.bind("SUPER + Return",    hl.dsp.exec_cmd("~/.local/bin/hypr-term"), { description = "Apps: Open terminal" })
 -- every bind with a description ("Group: what it does") shows up here, as keycaps
 hl.bind("SUPER + slash",     hl.dsp.exec_cmd("~/.local/bin/hypr-pop keys"), { description = "Help: All shortcuts" })
 -- one key per app you live in: focus it if open (again = next window), start it if not.
@@ -64,6 +67,7 @@ exec-once = ~/.local/bin/shoji apply
 exec-once = waybar
 exec-once = swaync
 exec-once = ~/.local/bin/hypr-widgets
+exec-once = ~/.local/bin/hypr-term --service
 exec-once = ~/.local/bin/shoji wallpaper
 
 general {
@@ -79,6 +83,7 @@ layerrule = noanim, ^(swaync-notification-window)$
 
 bind = SUPER SHIFT, T, exec, ~/.local/bin/hypr-pop theme
 bind = SUPER, Space, exec, ~/.local/bin/hypr-pop launcher
+bindd = SUPER, Return, Apps: Open terminal, exec, ~/.local/bin/hypr-term
 bindd = SUPER, slash, Help: All shortcuts, exec, ~/.local/bin/hypr-pop keys
 bindd = SUPER, K, Apps: Slack, exec, ~/.local/bin/hypr-focus-or-launch slack gtk-launch com.slack.Slack
 bindd = SUPER, B, Apps: Browser, exec, ~/.local/bin/hypr-focus-or-launch '^google-chrome$' gtk-launch google-chrome

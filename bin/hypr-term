@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# New terminal window in ~70 ms instead of ~1 s.
+# A cold ghostty start (GTK4 + GL + snap) takes about a second. One ghostty stays running as a
+# GApplication service (started at login with `hypr-term --service`); a new window is a D-Bus
+# action on it. When the service is not running, the first call starts it with a window.
+SERVICE=(ghostty --gtk-single-instance=true --quit-after-last-window-closed=false)
+case "$1" in
+  --service) exec "${SERVICE[@]}" --initial-window=false ;;
+  *) gapplication action com.mitchellh.ghostty new-window 2>/dev/null || exec "${SERVICE[@]}" ;;
+esac

@@ -25,6 +25,8 @@ folder icons and the wallpaper.
 - **Shortcuts** (Super+/) — one cheat sheet with every described bind, in columns by group; click
   one to run it, or start typing to search.
 - **Notifications** slide in from the right edge one at a time; the stack never stretches.
+- **Instant terminal** — `hypr-term` opens a ghostty window in ~70 ms (a cold start takes ~1 s) by
+  asking the ghostty that is already running.
 - **Theme manager** (Super+Shift+T) — six palettes, follow the sun (light by day, dark at night).
 - **Lock screen** with an ensō around the clock and the date in kanji.
 - **Paper folders** — Shoji draws its own folder icons in the palette; app icons come from Papirus.
