@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3 — 2026-10-24
+
+- Launcher: apps did not open (click or Enter). Usage counts were written under
+  `~/.local/state/shoji/`, which is the palette state file; they now live in
+  `~/.local/state/shoji-launcher.json`, and saving them can no longer block a launch.
+- Launcher: loose letters-in-order matching only applies to app names (fewer odd results).
+- `hypr-pop launcher <text>` opens the launcher with a query.
+
 ## 0.1.2 — 2026-10-24
 
 - Lock screen background comes from `~/.cache/shoji/lock.png`, written by `shoji` (and hypr-wall),

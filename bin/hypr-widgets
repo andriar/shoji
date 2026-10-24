@@ -800,7 +800,7 @@ class Launcher(Popover):
     name = "launcher"
     width = 560
     ROWS = 8
-    STATE = HOME / ".local/state/shoji/launcher.json"
+    STATE = HOME / ".local/state/shoji-launcher.json"  # ~/.local/state/shoji is the palette file
 
     def __init__(self, manager):
         super().__init__(manager, anchor_right=False)
@@ -897,7 +897,7 @@ class Launcher(Popover):
                 best = max(best, 80 * w)
             elif q in k:
                 best = max(best, 60 * w)
-            else:
+            elif i < 2 and len(q) >= 3:  # loose letters-in-order only on the app name
                 it = iter(k)
                 if all(ch in it for ch in q):
                     best = max(best, 25 * w)
@@ -943,16 +943,22 @@ class Launcher(Popover):
             self.launch(row.app)
 
     def launch(self, app):
-        counts = self.counts()
-        counts[app.get_id() or app.get_name()] = counts.get(app.get_id() or app.get_name(), 0) + 1
-        self.STATE.parent.mkdir(parents=True, exist_ok=True)
-        self.STATE.write_text(json.dumps(counts))
         self.manager.close()
         ctx = Gdk.Display.get_default().get_app_launch_context()
         try:
             app.launch([], ctx)
         except GLib.Error as e:
-            print("launch:", e, file=sys.stderr)
+            print("launch:", e, file=sys.stderr, flush=True)
+            return
+        # usage counts only rank the list; they must never stop an app from opening
+        try:
+            counts = self.counts()
+            key = app.get_id() or app.get_name()
+            counts[key] = counts.get(key, 0) + 1
+            self.STATE.parent.mkdir(parents=True, exist_ok=True)
+            self.STATE.write_text(json.dumps(counts))
+        except OSError as e:
+            print("launcher: could not save usage:", e, file=sys.stderr, flush=True)
 
     def show(self):
         load_css()
@@ -986,6 +992,12 @@ class Popovers:
         self.backdrop.win.show()
         self.items[name].show()
         self.open = name
+
+    def open_launcher(self, query):
+        if self.open != "launcher":
+            self.toggle("launcher")
+        self.items["launcher"].entry.set_text(query)
+        self.items["launcher"].entry.set_position(-1)
 
     def close(self):
         if self.open:
@@ -1033,6 +1045,8 @@ def watch_fifo(osd, pops):
             parts = raw.decode(errors="replace").split("\t")
             if len(parts) == 2 and parts[0] == "pop":
                 pops.toggle(parts[1])
+            elif len(parts) == 3 and parts[0] == "pop" and parts[1] == "launcher":
+                pops.open_launcher(parts[2])  # hypr-pop launcher <text>: open with a query
             elif len(parts) == 4 and parts[2].isdigit():
                 osd_line = parts
         if osd_line:  # only the newest level matters when the knob spins fast
