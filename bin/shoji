@@ -290,6 +290,74 @@ def cursor_installed():
     return any((Path(d) / "icons" / CURSOR).exists() for d in (HOME / ".local/share", HOME / ".icons", "/usr/share"))
 
 
+GTK3_CSS = """
+/* ---- Shoji for GTK3 apps (Thunar, pavucontrol, blueman …). Adwaita GTK3 ignores most named
+   colors above, so the paper look is written out here. Accent = selected / "you are here" only. ---- */
+window, .background { background-color: @theme_bg_color; color: @theme_fg_color; }
+* { outline-color: alpha(@accent_color, 0.6); }
+menubar { background: @theme_bg_color; box-shadow: none; padding: 2px 6px; }
+menubar > menuitem { padding: 4px 10px; border-radius: 6px; color: @shoji_muted; }
+menubar > menuitem:hover { background: @shoji_hover; color: @theme_fg_color; box-shadow: none; }
+menu, .menu, .context-menu { background: @popover_bg_color; border: 1px solid @shoji_edge; border-radius: 10px;
+  padding: 5px; }
+menu menuitem { padding: 5px 12px; border-radius: 6px; min-height: 18px; }
+menu menuitem:hover { background: @shoji_hover; color: @theme_fg_color; }
+menu separator { background: @shoji_edge; margin: 4px 6px; }
+toolbar, .toolbar, .primary-toolbar { background: @theme_bg_color; border: none; box-shadow: none; padding: 6px 8px; }
+button { background-image: none; background-color: transparent; border: none; box-shadow: none;
+  border-radius: 8px; color: @theme_fg_color; text-shadow: none; -gtk-icon-shadow: none; }
+button:hover { background-color: @shoji_hover; }
+button:active, button:checked { background-color: alpha(@theme_fg_color, 0.14); }
+button:disabled { color: alpha(@theme_fg_color, 0.35); background-color: transparent; }
+button.suggested-action { background-color: @accent_color; color: @accent_fg_color; }
+button.destructive-action { background-color: @destructive_bg_color; color: @accent_fg_color; }
+entry { background: @shoji_surface; border: 1px solid transparent; border-radius: 8px; box-shadow: none;
+  color: @theme_fg_color; min-height: 30px; padding: 0 10px; caret-color: @accent_color; }
+entry:focus { border-color: alpha(@accent_color, 0.55); }
+entry selection, selection { background: alpha(@accent_color, 0.35); color: @theme_fg_color; }
+scrollbar { background: transparent; border: none; }
+scrollbar slider { background: alpha(@theme_fg_color, 0.22); border: none; border-radius: 6px; min-width: 6px;
+  min-height: 6px; }
+scrollbar slider:hover { background: alpha(@theme_fg_color, 0.38); }
+scrolledwindow undershoot, scrolledwindow overshoot { background: none; box-shadow: none; }
+separator { background: @shoji_edge; min-width: 1px; min-height: 1px; background-image: none; }
+paned > separator { background: @shoji_edge; background-image: none; min-width: 1px; min-height: 1px;
+  margin: 0; padding: 0; border: none; box-shadow: none; }
+statusbar { color: @shoji_muted; font-size: 10.5px; padding: 0 10px; background: @theme_bg_color; border: none; }
+statusbar > frame, statusbar frame > border { border: none; }
+tooltip, tooltip.background { background: @popover_bg_color; border: 1px solid @shoji_edge; border-radius: 8px; }
+tooltip label { color: @theme_fg_color; }
+notebook > header { background: @theme_bg_color; border: none; box-shadow: none; }
+notebook > header tab { border-radius: 8px; padding: 4px 12px; color: @shoji_muted; box-shadow: none; }
+notebook > header tab:checked { background: @shoji_hover; color: @theme_fg_color; }
+notebook > stack:not(:only-child) { background: @theme_bg_color; }
+
+/* lists and icon views: quiet hover, accent-tinted selection */
+.view, treeview.view, iconview { background-color: @theme_bg_color; color: @theme_fg_color; }
+.view:hover, treeview.view:hover { background-color: @shoji_surface; }
+.view:selected, treeview.view:selected, iconview:selected, .view:selected:focus, treeview.view:selected:focus {
+  background-color: alpha(@accent_color, 0.22); color: @theme_fg_color; border-radius: 8px; }
+treeview.view header button { background: @theme_bg_color; color: @shoji_muted; border-bottom: 1px solid @shoji_edge;
+  border-radius: 0; font-size: 10.5px; }
+.view.rubberband, rubberband { background: alpha(@accent_color, 0.15); border: 1px solid alpha(@accent_color, 0.6);
+  border-radius: 4px; }
+
+/* sidebars (Thunar's places, GtkPlacesSidebar) */
+.sidebar, .sidebar .view, placessidebar, placessidebar list, .shortcuts-pane, .shortcuts-pane .view {
+  background-color: @sidebar_bg_color; border: none; }
+.sidebar .view, .shortcuts-pane .view { padding: 2px 6px; }
+.shortcuts-pane .view:selected, .sidebar .view:selected, placessidebar row:selected {
+  background-color: @shoji_hover; color: @theme_fg_color; box-shadow: inset 2px 0 @accent_color; }
+
+/* Thunar: breadcrumb path, view edges */
+.path-bar-button { padding: 2px 10px; margin: 0 1px; border-radius: 7px; color: @shoji_muted; }
+.path-bar-button:checked { background-color: @shoji_hover; color: @theme_fg_color; }
+.path-bar-button:hover { color: @theme_fg_color; }
+.standard-view { border: none; background-color: @theme_bg_color; }
+.standard-view.dnd-highlight { border: 2px solid alpha(@accent_color, 0.6); }
+"""
+
+
 def apply_gtk(name, t):
     """GTK 3/4 look. ~/.config/gtk-* is shared with GNOME; `shoji gnome` undoes this there."""
     dark = PALETTES[name]["dark"]
@@ -312,8 +380,12 @@ def apply_gtk(name, t):
         "success_color": t["ok"], "warning_color": t["warn"], "error_color": t["alert"],
         # GTK3 Adwaita names
         "theme_bg_color": t["base"], "theme_fg_color": t["text"], "theme_base_color": t["mantle"] if dark else "#ffffff",
-        "theme_text_color": t["text"], "theme_selected_bg_color": t["accent"], "theme_selected_fg_color": t["on_accent"],
+        # GTK3 apps paint selections with these: a tint of the accent keeps the file name readable
+        "theme_text_color": t["text"], "theme_selected_fg_color": t["text"],
+        "theme_selected_bg_color": mix(t["base"], t["accent"], 0.30 if dark else 0.24),
         "insensitive_fg_color": t["overlay0"], "borders": t["surface1"],
+        "shoji_muted": t["muted"], "shoji_surface": rgba(t["text"], 0.06), "shoji_hover": rgba(t["text"], 0.10),
+        "shoji_edge": rgba(t["text"], 0.14),
     }
     gtkcss = "/* Generated by shoji — GNOME logins remove this file (shoji gnome) */\n" + "".join(
         f"@define-color {k} {v};\n" for k, v in named.items())
@@ -322,7 +394,7 @@ def apply_gtk(name, t):
             f = CFG / ver / fname
             if f.is_symlink():
                 f.unlink()
-            write(f, gtkcss)
+            write(f, gtkcss + (GTK3_CSS if ver == "gtk-3.0" else ""))
         write(CFG / ver / "settings.ini", f"[Settings]\ngtk-application-prefer-dark-theme={int(dark)}\n"
               f"gtk-icon-theme-name={icons}\ngtk-font-name=Zen Kaku Gothic New 11\n"
               + (f"gtk-cursor-theme-name={CURSOR}\ngtk-cursor-theme-size=24\n" if cursor_installed() else ""))

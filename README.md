@@ -30,6 +30,8 @@ folder icons and the wallpaper.
 - **Theme manager** (Super+Shift+T) — six palettes, follow the sun (light by day, dark at night).
 - **Lock screen** with an ensō around the clock and the date in kanji.
 - **Paper folders** — Shoji draws its own folder icons in the palette; app icons come from Papirus.
+- **GTK3 apps on paper** — Thunar, pavucontrol, blueman and friends get the palette, flat buttons,
+  hairlines, an accent-tinted selection and an accent bar on the current sidebar place.
 
 | Theme manager | Koyomi | Ensō OSD |
 |---|---|---|
@@ -105,6 +107,19 @@ the Shoji prompt.
 The installer does not touch your Hyprland config. Copy the block for your config format
 (Lua for 0.55+, or `hyprland.conf`) from [docs/hyprland.md](docs/hyprland.md): autostart, blur,
 window hairlines and the keys. Check it with `Hyprland --verify-config`, then log out and back in.
+
+### Thunar (optional)
+
+Thunar opens in ~140 ms (Nautilus takes ~1 s cold) and ~45 ms with its daemon. For the Shoji look,
+use breadcrumbs and the ⋮ menu instead of the menu bar (Ctrl+M brings it back):
+
+```sh
+xfconf-query -c thunar -p /last-location-bar -n -t string -s ThunarLocationButtons
+xfconf-query -c thunar -p /last-menubar-visible -n -t bool -s false
+xdg-mime default thunar.desktop inode/directory   # folders from other apps open in Thunar
+```
+
+Start `thunar --daemon` at login and bind your file-manager key to `thunar`.
 
 ### Uninstall
 
