@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Toggle hyprsunset night light. `status` prints waybar JSON.
+TEMP=4500
+
+case "${1:-toggle}" in
+  status)
+    if pgrep -x hyprsunset >/dev/null; then
+      echo '{"text":"","class":"on","tooltip":"Night light on ('"$TEMP"'K) — click to turn off"}'
+    else
+      echo '{"text":"","class":"off","tooltip":"Night light off — click to turn on"}'
+    fi
+    ;;
+  toggle)
+    if pgrep -x hyprsunset >/dev/null; then
+      pkill -x hyprsunset
+    else
+      setsid -f hyprsunset -t "$TEMP" >/dev/null 2>&1
+    fi
+    pkill -RTMIN+8 waybar
+    ;;
+esac

@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Pick audio output or mic input from a fuzzel menu (waybar clicks).
+
+Usage: audio-switch [menu|next] [out|in]
+  menu  show all devices, switch to the chosen one (default)
+  next  cycle to the next device without a menu
+  out   speakers/headphones (default) · in  microphones
+Switching sets the default device and moves every live stream to it.
+"""
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+KINDS = {
+    "out": dict(list="sinks", streams="sink-inputs", move="move-sink-input",
+                get="get-default-sink", set="set-default-sink",
+                prompt="output ❯ ", hint="Choose speaker / headset", title="Output audio", signal="-RTMIN+10"),
+    "in": dict(list="sources", streams="source-outputs", move="move-source-output",
+               get="get-default-source", set="set-default-source",
+               prompt="mic ❯ ", hint="Choose microphone", title="Input mic", signal="-RTMIN+11"),
+}
+
+
+def sh(*cmd, inp=None):
+    return subprocess.run(cmd, input=inp, capture_output=True, text=True).stdout.strip()
+
+
+def label(dev, kind):
+    name, desc = dev["name"], dev["description"]
+    if name.startswith("bluez_"):
+        return f"󰋋  {desc} (Bluetooth)"
+    if "usb" in name:
+        short = desc.replace(" Analog Stereo", "").replace(" Mono", "")
+        return f"󰋎  Headset USB — {short}"
+    if "hdmi" in name:
+        return "󰍹  Monitor (HDMI/DP)"
+    if "pci" in name:
+        return "󰍬  Built-in mic / line-in" if kind == "in" else "󰓃  Built-in speaker / jack"
+    return f"{'󰍬' if kind == 'in' else '󰓃'}  {desc}"
+
+
+def devices(k):
+    devs = json.loads(sh("pactl", "-f", "json", "list", k["list"]) or "[]")
+    # sources include a ".monitor" loopback of every sink; those are not mics
+    return [d for d in devs if not d["name"].endswith(".monitor")]
+
+
+def switch(dev, kind):
+    k = KINDS[kind]
+    sh("pactl", k["set"], dev["name"])
+    for stream in json.loads(sh("pactl", "-f", "json", "list", k["streams"]) or "[]"):
+        sh("pactl", k["move"], str(stream["index"]), dev["name"])
+    sh("notify-send", "-a", "Audio", k["title"], label(dev, kind)[3:])
+    sh("pkill", k["signal"], "waybar")
+
+
+def main():
+    mode = sys.argv[1] if len(sys.argv) > 1 else "menu"
+    kind = sys.argv[2] if len(sys.argv) > 2 else "out"
+    k = KINDS[kind]
+    devs = devices(k)
+    if not devs:
+        sh("notify-send", "-a", "Audio", f"No {k['title'].lower()} found")
+        return
+    current = sh("pactl", k["get"])
+
+    if mode == "next":
+        names = [d["name"] for d in devs]
+        i = names.index(current) if current in names else -1
+        switch(devs[(i + 1) % len(devs)], kind)
+        return
+
+    rows = [("● " if d["name"] == current else "   ") + label(d, kind) for d in devs]
+    names = [d["name"] for d in devs]
+    # highlight the active device, so a menu closed by an outside click changes nothing
+    selected = names.index(current) if current in names else 0
+    choice = sh(str(Path.home() / ".local/bin/fuzzel-at-cursor"), "--dmenu", "--index", f"--prompt={k['prompt']}", f"--placeholder={k['hint']}",
+                f"--lines={len(rows)}", "--width=48", f"--select-index={selected}",
+                inp="\n".join(rows))
+    if choice.isdigit() and devs[int(choice)]["name"] != current:
+        switch(devs[int(choice)], kind)
+
+
+if __name__ == "__main__":
+    main()

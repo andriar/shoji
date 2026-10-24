@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""Wallpaper picker with animated transitions (awww).
+
+Usage: hypr-wall [menu|next|restore|set FILE]
+  menu     pick from ~/Pictures/Wallpapers in a fuzzel list with thumbnails
+  next     cycle to the next wallpaper
+  restore  re-apply the saved wallpaper (Hyprland autostart, no animation)
+The menu transition grows from the mouse position; next wipes diagonally.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+DIR = Path.home() / "Pictures/Wallpapers"
+STATE = Path.home() / ".local/state/wallpaper"
+THUMBS = Path.home() / ".cache/hypr-wall"
+AWWW = str(Path.home() / ".cargo/bin/awww")
+EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+
+def sh(*cmd, inp=None):
+    return subprocess.run(cmd, input=inp, capture_output=True, text=True).stdout.strip()
+
+
+def walls():
+    return sorted(p for p in DIR.iterdir() if p.suffix.lower() in EXTS)
+
+
+def thumb(path):
+    # fuzzel draws icons square, so center-crop to a square thumbnail
+    out = THUMBS / f"{path.stem}-{int(path.stat().st_mtime)}-sq.png"
+    if not out.exists():
+        from PIL import Image, ImageOps
+        THUMBS.mkdir(parents=True, exist_ok=True)
+        with Image.open(path) as im:
+            ImageOps.fit(im.convert("RGB"), (112, 112)).save(out)
+    return out
+
+
+def ensure_daemon():
+    if sh(AWWW, "query"):
+        return
+    subprocess.Popen(["setsid", "-f", str(Path.home() / ".cargo/bin/awww-daemon")],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(50):
+        time.sleep(0.1)
+        if sh(AWWW, "query"):
+            return
+
+
+def set_wall(path, *transition):
+    ensure_daemon()
+    sh(AWWW, "img", str(path), "--transition-fps", "180", *transition)
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    STATE.write_text(str(path) + "\n")
+    lock_copy(path)
+
+
+def lock_copy(path):
+    """hyprlock shows the same wallpaper (blurred); it reads a fixed PNG path."""
+    out = THUMBS / "lock.png"
+    stamp = THUMBS / "lock.src"
+    if stamp.exists() and stamp.read_text() == f"{path}:{path.stat().st_mtime}":
+        return
+    from PIL import Image
+    THUMBS.mkdir(parents=True, exist_ok=True)
+    with Image.open(path) as im:
+        im.convert("RGB").save(out)
+    stamp.write_text(f"{path}:{path.stat().st_mtime}")
+
+
+def grow_from_cursor():
+    cur = json.loads(sh("hyprctl", "cursorpos", "-j"))
+    mon = next(m for m in json.loads(sh("hyprctl", "monitors", "-j")) if m["focused"])
+    x, y = cur["x"] - mon["x"], mon["height"] - (cur["y"] - mon["y"])  # awww: origin bottom-left
+    return ("--transition-type", "grow", "--transition-pos", f"{x},{y}",
+            "--transition-duration", "1.2", "--transition-bezier", ".25,.1,.25,1")
+
+
+def current():
+    try:
+        return Path(STATE.read_text().strip())
+    except OSError:
+        return None
+
+
+def main():
+    mode = sys.argv[1] if len(sys.argv) > 1 else "menu"
+    files = walls()
+    if mode == "restore":
+        path = current() if current() and current().exists() else files[0]
+        set_wall(path, "--transition-type", "none")
+    elif mode == "set":
+        set_wall(Path(sys.argv[2]).expanduser(), *grow_from_cursor())
+    elif mode == "next":
+        names = [str(p) for p in files]
+        i = names.index(str(current())) if str(current()) in names else -1
+        set_wall(files[(i + 1) % len(files)], "--transition-type", "wipe", "--transition-angle", "30",
+                 "--transition-duration", "1", "--transition-step", "90")
+    else:
+        now = current()
+        rows = [p.stem.replace("_", " ").replace("-", " ") + ("  · current" if p == now else "")
+                + f"\0icon\x1f{thumb(p)}" for p in files]
+        choice = sh("fuzzel", "--dmenu", "--index", f"--prompt={chr(0xF0E09)}  ",
+                    "--placeholder=Choose wallpaper", "--line-height=56", "--width=40",
+                    f"--lines={min(len(rows), 8)}", inp="\n".join(rows))
+        if choice.isdigit():
+            set_wall(files[int(choice)], *grow_from_cursor())
+
+
+if __name__ == "__main__":
+    main()

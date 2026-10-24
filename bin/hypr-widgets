@@ -1,0 +1,1005 @@
+#!/usr/bin/env python3
+"""Shoji shell widgets that waybar and swaync can't draw (one GTK3 layer-shell process).
+
+  osd       ensō ring, top right: volume / mic level, shown even when Do Not Disturb is on.
+            hypr-osd writes "icon<TAB>title<TAB>percent<TAB>muted" lines to $FIFO.
+  calendar  Koyomi: kanji week, today as a seal; sits left of the swaync control center
+            while it is open (follows swaync's SubscribeV2 cc_open signal).
+  popovers  Sound (devices + volume), Network, and the Theme manager.
+            hypr-pop writes "pop<TAB>audio|network|theme" to $FIFO; the same line again closes it.
+
+Colors: ~/.config/waybar/colors.css for GTK CSS and ~/.config/shoji/current.json for cairo,
+both written by `shoji apply`, re-read on every show.
+"""
+import calendar as cal_mod
+import datetime
+import importlib.machinery
+import json
+import math
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import cairo
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("GtkLayerShell", "0.1")
+gi.require_version("PangoCairo", "1.0")
+from gi.repository import Gdk, GLib, Gio, Gtk, GtkLayerShell as Layer, PangoCairo  # noqa: E402
+
+HOME = Path.home()
+RUN = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+FIFO = RUN / "hypr-osd.fifo"
+PIDFILE = RUN / "hypr-widgets.pid"
+COLORS = HOME / ".config/waybar/colors.css"
+THEME = HOME / ".config/shoji/current.json"
+PREFS = HOME / ".config/shoji/prefs.json"
+SHOJI = str(HOME / ".local/bin/shoji")
+LUCIDE = json.loads((HOME / ".local/share/fonts/Shoji/lucide-info.json").read_text())
+CC_WIDTH = 420      # swaync control-center-width
+GAP = 8
+OSD_MS = 1400
+WEEK_K = "日月火水木金土"  # Sunday first, like the calendar grid
+
+
+def icon(name):
+    return chr(int(LUCIDE[name]["encodedCode"].lstrip("\\"), 16))
+
+
+def sh(*cmd):
+    return subprocess.run(cmd, capture_output=True, text=True).stdout.strip()
+
+
+def spawn(*cmd):
+    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def theme():
+    try:
+        return json.loads(THEME.read_text())
+    except (OSError, ValueError):
+        return {"tokens": {"base": "#111827", "text": "#e6e9f0", "muted": "#97a0b5", "accent": "#d9b05a",
+                           "on_accent": "#17161b"}, "dark": True}
+
+
+def prefs():
+    try:
+        return json.loads(PREFS.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def save_prefs(**kw):
+    p = prefs()
+    p.update(kw)
+    PREFS.write_text(json.dumps(p, indent=1) + "\n")
+
+
+def rgba(h, a=1.0):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)) + (a,)
+
+
+CSS = b"""
+* { font-family: "Zen Kaku Gothic New", "lucide", "JetBrainsMono Nerd Font"; font-size: 12px; }
+.panel {
+  background: @elev2;
+  border: 1px solid @edge;
+  border-radius: 14px;
+  padding: 14px;
+  color: @text;
+}
+.muted { color: @muted; }
+.label-small { color: @muted; font-size: 10.5px; letter-spacing: 1px; }
+.mono { font-family: "JetBrainsMono Nerd Font"; font-size: 11px; color: @muted; }
+.display { font-family: "Shippori Mincho"; font-weight: 700; font-size: 22px; color: @text; }
+.title { font-size: 13px; font-weight: 700; }
+.sep { background: @edge; min-height: 1px; }
+
+/* koyomi */
+.wk { font-family: "Shippori Mincho"; font-size: 11px; color: @muted; }
+.day { min-width: 30px; min-height: 22px; border-radius: 5px; font-size: 12px; color: @text; }
+.day.other { color: alpha(@text, 0.32); }
+.day.today { background: @accent; color: @on_accent; font-weight: 700; }
+.nav { background: transparent; border: none; box-shadow: none; color: @muted; min-width: 24px; min-height: 22px;
+       padding: 0; border-radius: 5px; font-family: "lucide"; }
+.nav:hover { background: @hover; color: @text; }
+
+/* rows inside popovers */
+.row { background: transparent; border: none; box-shadow: none; border-radius: 8px; padding: 0 10px;
+       min-height: 34px; color: @muted; }
+.row:hover { background: @hover; color: @text; }
+.row.active { background: alpha(@text, 0.10); color: @text; }
+.row .icon { font-family: "lucide"; font-size: 14px; }
+.row .dot { min-width: 7px; min-height: 7px; border-radius: 2px; }
+.row.active .dot { background: @accent; }
+.chip { background: @group; border: none; box-shadow: none; border-radius: 6px; padding: 2px 10px;
+        color: @text; font-size: 11px; min-height: 22px; }
+.chip:hover { background: @hover; }
+.chip.on { background: @accent; color: @on_accent; }
+.link { background: transparent; border: none; box-shadow: none; color: @muted; padding: 2px 10px;
+        border-radius: 8px; min-height: 26px; }
+.link:hover { background: @hover; color: @text; }
+scale trough { min-height: 4px; border-radius: 2px; background: @track; border: none; }
+scale highlight { min-height: 4px; border-radius: 2px; background: @accent; border: none; }
+scale slider { min-width: 14px; min-height: 14px; margin: -5px; border-radius: 7px; background: @text;
+               border: none; box-shadow: none; }
+
+/* theme manager */
+.card { background: @group; border: 2px solid transparent; border-radius: 12px; padding: 8px;
+        box-shadow: none; color: @text; }
+.card:hover { background: @hover; }
+.card.active { border-color: @accent; }
+.card .name { font-family: "Shippori Mincho"; font-weight: 700; font-size: 13px; }
+.seal { background: @accent; color: @on_accent; border-radius: 5px; min-width: 28px; min-height: 28px;
+        font-family: "Shippori Mincho"; font-weight: 700; font-size: 15px; }
+switch { background: alpha(@text, 0.18); border: none; border-radius: 10px; min-height: 18px; }
+switch:checked { background: @accent; }
+switch slider { background: @text; border: none; border-radius: 8px; min-width: 14px; min-height: 14px; }
+switch:checked slider { background: @on_accent; }
+
+/* launcher */
+.searchbar { background: @group; border-radius: 10px; padding: 2px 10px; }
+.searchbar .icon { font-family: "lucide"; font-size: 15px; color: @muted; }
+entry.search { background: transparent; border: none; box-shadow: none; color: @text; font-size: 15px;
+               min-height: 38px; caret-color: @accent; }
+entry.search selection { background: alpha(@accent, 0.35); }
+.kbd { font-family: "JetBrainsMono Nerd Font"; font-size: 10px; color: @muted; border: 1px solid @edge;
+       border-radius: 4px; padding: 1px 5px; }
+list { background: transparent; }
+.app-row { background: transparent; border-radius: 9px; padding: 6px 10px; min-height: 32px; }
+.app-row:hover { background: @hover; }
+.app-row:selected { background: alpha(@text, 0.10); }
+.app-row .app-name { font-size: 13px; color: @text; }
+.app-row .desc { font-size: 11px; color: @muted; }
+.app-row .dot { min-width: 7px; min-height: 7px; border-radius: 2px; }
+.app-row:selected .dot { background: @accent; }
+"""
+
+provider = Gtk.CssProvider()
+
+
+def load_css():
+    try:
+        colors = COLORS.read_bytes()
+    except OSError:
+        colors = b""
+    try:
+        provider.load_from_data(colors + CSS)
+    except GLib.Error as e:
+        print("css:", e, file=sys.stderr)
+
+
+def layer_window(namespace, layer, keyboard=False):
+    win = Gtk.Window()
+    win.set_app_paintable(True)
+    visual = win.get_screen().get_rgba_visual()
+    if visual:
+        win.set_visual(visual)
+    Layer.init_for_window(win)
+    Layer.set_namespace(win, namespace)
+    Layer.set_layer(win, layer)
+    Layer.set_keyboard_mode(win, Layer.KeyboardMode.ON_DEMAND if keyboard else Layer.KeyboardMode.NONE)
+    win.connect("draw", clear_bg)
+    return win
+
+
+def clear_bg(_w, cr):
+    cr.set_operator(cairo.OPERATOR_SOURCE)
+    cr.set_source_rgba(0, 0, 0, 0)
+    cr.paint()
+    cr.set_operator(cairo.OPERATOR_OVER)
+    return False
+
+
+def click_through(win):
+    win.input_shape_combine_region(cairo.Region())
+
+
+def label(text, *classes, xalign=0.0):
+    w = Gtk.Label(label=text, xalign=xalign)
+    for c in classes:
+        w.get_style_context().add_class(c)
+    return w
+
+
+def sep():
+    s = Gtk.Box()
+    s.get_style_context().add_class("sep")
+    return s
+
+
+def enso(cr, cx, cy, r, frac, color, width, track=None):
+    start = -math.pi / 2 - math.radians(6)
+    sweep = 2 * math.pi * 0.94
+    cr.set_line_cap(cairo.LINE_CAP_ROUND)
+    if track:
+        cr.set_source_rgba(*track)
+        cr.set_line_width(width * 0.7)
+        cr.arc(cx, cy, r, start, start + sweep)
+        cr.stroke()
+    if frac > 0:
+        cr.set_source_rgba(*color)
+        cr.set_line_width(width)
+        cr.arc(cx, cy, r, start, start + sweep * frac)
+        cr.stroke()
+        if frac > 0.08:
+            cr.set_source_rgba(color[0], color[1], color[2], 0.5)
+            cr.set_line_width(max(1.2, width * 0.24))
+            cr.arc(cx, cy, r - width * 0.72, start + 0.07, start + sweep * frac * 0.78)
+            cr.stroke()
+
+
+# ---------------------------------------------------------------- OSD
+class Osd:
+    SIZE = 116
+
+    def __init__(self):
+        self.win = layer_window("hypr-osd", Layer.Layer.OVERLAY)
+        Layer.set_anchor(self.win, Layer.Edge.TOP, True)
+        Layer.set_anchor(self.win, Layer.Edge.RIGHT, True)
+        Layer.set_margin(self.win, Layer.Edge.TOP, GAP)
+        Layer.set_margin(self.win, Layer.Edge.RIGHT, 16)
+        self.area = Gtk.DrawingArea()
+        self.area.set_size_request(self.SIZE, self.SIZE)
+        self.area.connect("draw", self.draw)
+        self.win.add(self.area)
+        self.area.show()
+        self.win.connect("realize", click_through)
+        self.timer = 0
+        self.pct, self.muted, self.kind = 0, False, "vol"
+
+    def draw(self, _w, cr):
+        t = theme()["tokens"]
+        s = self.SIZE
+        c = s / 2
+        # paper disc + hairline
+        cr.set_source_rgba(*rgba(t["base"], 0.80))
+        cr.arc(c, c, c - 1, 0, 2 * math.pi)
+        cr.fill_preserve()
+        cr.set_source_rgba(*rgba(t["text"], 0.14))
+        cr.set_line_width(1)
+        cr.stroke()
+        col = rgba(t["muted"] if self.muted else t["accent"])
+        enso(cr, c, c, c - 15, 0 if self.muted else self.pct / 100, col, 6, track=rgba(t["text"], 0.12))
+        # number + label
+        layout = self.area.create_pango_layout("")
+        layout.set_markup(
+            f'<span font_family="Shippori Mincho" weight="bold" size="21pt" foreground="{t["muted"] if self.muted else t["text"]}">'
+            f'{"off" if self.muted else self.pct}</span>', -1)
+        w, h = layout.get_pixel_size()
+        cr.move_to(c - w / 2, c - h / 2 - 6)
+        PangoCairo.show_layout(cr, layout)
+        sub = {"vol": "音量 · VOL", "mic": "マイク · MIC"}[self.kind]
+        if self.muted:
+            sub = "MUTED"
+        layout2 = self.area.create_pango_layout("")
+        layout2.set_markup(f'<span font_family="Zen Kaku Gothic New" size="7.5pt" letter_spacing="1500" '
+                           f'foreground="{t["muted"]}">{sub}</span>', -1)
+        w2, h2 = layout2.get_pixel_size()
+        cr.move_to(c - w2 / 2, c + h / 2 - 8)
+        PangoCairo.show_layout(cr, layout2)
+        return False
+
+    def show(self, title, pct, muted):
+        self.kind = "mic" if title.lower().startswith("micro") else "vol"
+        self.pct, self.muted = max(0, min(100, pct)), muted
+        self.area.queue_draw()
+        self.win.show()
+        if self.timer:
+            GLib.source_remove(self.timer)
+        self.timer = GLib.timeout_add(OSD_MS, self.hide)
+
+    def hide(self):
+        self.timer = 0
+        self.win.hide()
+        return False
+
+
+# ---------------------------------------------------------------- Koyomi calendar
+class Calendar:
+    """Top card of the Koyomi column; the swaync panel sits right under it (same width)."""
+    WIDTH = CC_WIDTH
+
+    def __init__(self):
+        self.win = layer_window("hypr-calendar", Layer.Layer.OVERLAY)
+        Layer.set_anchor(self.win, Layer.Edge.TOP, True)
+        Layer.set_margin(self.win, Layer.Edge.TOP, GAP)
+        self.win.set_size_request(self.WIDTH, -1)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        box.get_style_context().add_class("panel")
+        head = Gtk.Box(spacing=6)
+        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.weekday = label("", "muted")
+        self.date = label("", "display")
+        left.pack_start(self.weekday, False, False, 0)
+        left.pack_start(self.date, False, False, 0)
+        head.pack_start(left, True, True, 0)
+        self.yw = label("", "mono", xalign=1)
+        self.yw.set_valign(Gtk.Align.END)
+        head.pack_start(self.yw, False, False, 0)
+        box.pack_start(head, False, False, 0)
+        nav = Gtk.Box(spacing=4)
+        self.month = label("", "title")
+        nav.pack_start(self.month, True, True, 0)
+        for name, step in (("chevron-left", -1), ("chevron-right", 1)):
+            b = Gtk.Button(label=icon(name))
+            b.get_style_context().add_class("nav")
+            b.connect("clicked", lambda _b, s=step: self.shift(s))
+            nav.pack_start(b, False, False, 0)
+        box.pack_start(nav, False, False, 0)
+        self.grid = Gtk.Grid(column_homogeneous=True, row_spacing=2)
+        box.pack_start(self.grid, False, False, 0)
+        self.win.add(box)
+        box.show_all()
+        self.view = datetime.date.today().replace(day=1)
+
+    def shift(self, step):
+        y, m = self.view.year, self.view.month + step
+        if m == 0:
+            y, m = y - 1, 12
+        elif m == 13:
+            y, m = y + 1, 1
+        self.view = datetime.date(y, m, 1)
+        self.fill()
+
+    def fill(self):
+        for child in self.grid.get_children():
+            self.grid.remove(child)
+        today = datetime.date.today()
+        self.month.set_text(self.view.strftime("%B %Y"))
+        for i, k in enumerate(WEEK_K):
+            self.grid.attach(label(k, "wk", xalign=0.5), i, 0, 1, 1)
+        c = cal_mod.Calendar(firstweekday=6)  # Sunday first
+        weeks = c.monthdatescalendar(self.view.year, self.view.month)
+        while len(weeks) < 6:  # always 6 rows: the card keeps one height, the panel under it never moves
+            weeks.append([d + datetime.timedelta(days=7) for d in weeks[-1]])
+        for r, week in enumerate(weeks, start=1):
+            for col, d in enumerate(week):
+                cls = ["day"]
+                if d.month != self.view.month:
+                    cls.append("other")
+                if d == today:
+                    cls.append("today")
+                lab = label(str(d.day), *cls, xalign=0.5)
+                lab.set_halign(Gtk.Align.CENTER)
+                self.grid.attach(lab, col, r, 1, 1)
+        self.grid.show_all()
+
+    def show(self):
+        load_css()
+        today = datetime.date.today()
+        self.view = today.replace(day=1)
+        self.weekday.set_text(f"{today.strftime('%A')} · {WEEK_K[(today.weekday() + 1) % 7]}曜日")
+        self.date.set_text(today.strftime("%-d %B"))
+        self.yw.set_text(f"{today.year} · w{today.isocalendar()[1]}")
+        self.fill()
+        self.win.show()
+
+    def hide(self):
+        self.win.hide()
+
+
+# ---------------------------------------------------------------- popovers
+class Backdrop:
+    """Invisible full-screen layer under a popover: a click anywhere else closes it."""
+
+    def __init__(self, on_click):
+        self.win = layer_window("hypr-backdrop", Layer.Layer.TOP)
+        for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):
+            Layer.set_anchor(self.win, e, True)
+        Layer.set_exclusive_zone(self.win, -1)
+        ev = Gtk.EventBox()
+        ev.set_visible_window(False)
+        ev.connect("button-press-event", lambda *_: on_click())
+        self.win.add(ev)
+        ev.show()
+
+
+class Popover:
+    name = ""
+    width = 320
+
+    def __init__(self, manager, anchor_right=True):
+        self.manager = manager
+        self.win = layer_window(f"hypr-pop", Layer.Layer.OVERLAY, keyboard=True)
+        Layer.set_anchor(self.win, Layer.Edge.TOP, True)
+        if anchor_right:
+            Layer.set_anchor(self.win, Layer.Edge.RIGHT, True)
+            Layer.set_margin(self.win, Layer.Edge.RIGHT, 10)
+        Layer.set_margin(self.win, Layer.Edge.TOP, GAP)
+        self.win.connect("key-press-event", self.on_key)
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.box.get_style_context().add_class("panel")
+        self.box.set_size_request(self.width, -1)
+        self.win.add(self.box)
+
+    def on_key(self, _w, ev):
+        if ev.keyval == Gdk.KEY_Escape:
+            self.manager.close()
+        return False
+
+    def clear(self):
+        for child in self.box.get_children():
+            self.box.remove(child)
+
+    def header(self, title, extra=None):
+        h = Gtk.Box(spacing=8)
+        h.pack_start(label(title, "title"), True, True, 0)
+        if extra:
+            h.pack_start(extra, False, False, 0)
+        self.box.pack_start(h, False, False, 2)
+
+    def row(self, ico, text, active, on_click, meta=""):
+        b = Gtk.Button()
+        b.get_style_context().add_class("row")
+        if active:
+            b.get_style_context().add_class("active")
+        inner = Gtk.Box(spacing=10)
+        inner.pack_start(label(ico, "icon"), False, False, 0)
+        name = label(text)
+        name.set_ellipsize(3)  # END
+        inner.pack_start(name, True, True, 0)
+        if meta:
+            inner.pack_start(label(meta, "label-small"), False, False, 0)
+        dot = Gtk.Box()
+        dot.get_style_context().add_class("dot")
+        dot.set_valign(Gtk.Align.CENTER)
+        inner.pack_start(dot, False, False, 0)
+        b.add(inner)
+        b.connect("clicked", lambda *_: on_click())
+        self.box.pack_start(b, False, False, 0)
+
+    def footer(self, text, cmd):
+        self.box.pack_start(sep(), False, False, 2)
+        b = Gtk.Button(label=text)
+        b.get_style_context().add_class("link")
+        b.get_child().set_xalign(0)
+        b.connect("clicked", lambda *_: (self.manager.close(), spawn(*cmd)))
+        self.box.pack_start(b, False, False, 0)
+
+    def show(self):
+        load_css()
+        self.clear()
+        self.build()
+        self.box.show_all()
+        self.win.show()
+        self.win.present()
+
+    def hide(self):
+        self.win.hide()
+
+
+AUDIO = importlib.machinery.SourceFileLoader("audio_switch", str(HOME / ".local/bin/audio-switch")).load_module()
+
+
+class Sound(Popover):
+    name = "audio"
+
+    def device_icon(self, dev, kind):
+        n = dev["name"]
+        if n.startswith("bluez_") or "usb" in n:
+            return icon("headphones")
+        if "hdmi" in n:
+            return icon("monitor")
+        return icon("mic") if kind == "in" else icon("speaker")
+
+    def build(self):
+        out_k, in_k = AUDIO.KINDS["out"], AUDIO.KINDS["in"]
+        vol_line = sh("wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@").split()
+        vol = round(float(vol_line[1]) * 100) if len(vol_line) > 1 else 0
+        muted = "[MUTED]" in vol_line
+
+        mute = Gtk.Button(label="Unmute" if muted else "Mute")
+        mute.get_style_context().add_class("chip")
+        if muted:
+            mute.get_style_context().add_class("on")
+        mute.connect("clicked", lambda *_: (sh("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"), self.refresh()))
+        self.header("Sound", mute)
+
+        line = Gtk.Box(spacing=8)
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        scale.set_draw_value(False)
+        scale.set_value(vol)
+        val = label(str(vol), "mono", xalign=1)
+        val.set_size_request(28, -1)
+
+        def changed(s):
+            v = int(s.get_value())
+            val.set_text(str(v))
+            sh("wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{v}%")
+            sh("pkill", "-RTMIN+10", "-x", "waybar")
+        scale.connect("value-changed", changed)
+        line.pack_start(scale, True, True, 0)
+        line.pack_start(val, False, False, 0)
+        self.box.pack_start(line, False, False, 0)
+
+        for kind, k, title in (("out", out_k, "OUTPUT"), ("in", in_k, "INPUT")):
+            self.box.pack_start(label(title, "label-small"), False, False, 4)
+            current = sh("pactl", k["get"])
+            for dev in AUDIO.devices(k):
+                self.row(self.device_icon(dev, kind), AUDIO.label(dev, kind)[3:], dev["name"] == current,
+                         lambda d=dev, kd=kind: self.pick(d, kd))
+        self.footer("Sound settings…", ["pavucontrol"])
+
+    def pick(self, dev, kind):
+        k = AUDIO.KINDS[kind]
+        sh("pactl", k["set"], dev["name"])
+        for stream in json.loads(sh("pactl", "-f", "json", "list", k["streams"]) or "[]"):
+            sh("pactl", k["move"], str(stream["index"]), dev["name"])
+        sh("pkill", "-RTMIN+10", "-x", "waybar")
+        self.refresh()
+
+    def refresh(self):
+        self.clear()
+        self.build()
+        self.box.show_all()
+
+
+class Network(Popover):
+    name = "network"
+
+    def build(self):
+        radio = sh("nmcli", "radio", "wifi")
+        has_wifi = any(l.split(":")[1] == "wifi" for l in sh("nmcli", "-t", "-f", "DEVICE,TYPE", "device").splitlines()
+                       if ":" in l)
+        sw = None
+        if has_wifi:
+            sw = Gtk.Switch(active=radio == "enabled")
+            sw.set_valign(Gtk.Align.CENTER)
+            sw.connect("notify::active", lambda s, _p: (sh("nmcli", "radio", "wifi", "on" if s.get_active() else "off"),
+                                                         GLib.timeout_add(800, self.refresh_once)))
+        self.header("Network", sw)
+        for line in sh("nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active").splitlines():
+            parts = line.split(":")
+            if len(parts) < 3 or parts[1] in ("loopback", "bridge") or parts[2].startswith(("docker", "br-", "veth", "lo")):
+                continue
+            ico = icon("wifi") if "wireless" in parts[1] else icon("lock") if "vpn" in parts[1] or "tun" in parts[1] else icon("ethernet-port")
+            self.row(ico, parts[0], True, lambda: None, meta="connected")
+        if has_wifi and radio == "enabled":
+            self.box.pack_start(label("WI-FI", "label-small"), False, False, 4)
+            seen = set()
+            for line in sh("nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list").splitlines()[:8]:
+                inuse, ssid, signal, sec = (line.split(":") + ["", "", "", ""])[:4]
+                if not ssid or ssid in seen:
+                    continue
+                seen.add(ssid)
+                meta = f"{signal}%" + (" · secured" if sec else "")
+                self.row(icon("wifi"), ssid, inuse == "*", lambda s=ssid, secured=bool(sec): self.connect_to(s, secured), meta)
+        self.footer("Network settings…", ["nm-connection-editor"])
+
+    def connect_to(self, ssid, secured):
+        known = ssid in sh("nmcli", "-t", "-f", "NAME", "connection", "show").splitlines()
+        if secured and not known:
+            self.manager.close()
+            spawn("nm-connection-editor")
+            return
+        spawn("nmcli", "device", "wifi", "connect", ssid)
+        GLib.timeout_add(2500, self.refresh_once)
+
+    def refresh_once(self):
+        if self.win.get_visible():
+            self.clear()
+            self.build()
+            self.box.show_all()
+        return False
+
+
+class ThemeManager(Popover):
+    name = "theme"
+    width = 720
+
+    def __init__(self, manager):
+        super().__init__(manager, anchor_right=False)
+        Layer.set_margin(self.win, Layer.Edge.TOP, 90)
+
+    def palettes(self):
+        sys.path.insert(0, str(HOME / ".local/bin"))
+        mod = importlib.machinery.SourceFileLoader("shoji_mod", SHOJI).load_module()
+        return mod.PALETTES
+
+    def preview(self, p):
+        area = Gtk.DrawingArea()
+        area.set_size_request(-1, 104)
+
+        def draw(w, cr):
+            W, H = w.get_allocated_width(), w.get_allocated_height()
+            # rounded clip
+            r = 8
+            cr.new_sub_path()
+            cr.arc(W - r, r, r, -math.pi / 2, 0)
+            cr.arc(W - r, H - r, r, 0, math.pi / 2)
+            cr.arc(r, H - r, r, math.pi / 2, math.pi)
+            cr.arc(r, r, r, math.pi, 3 * math.pi / 2)
+            cr.close_path()
+            cr.clip()
+            g = cairo.LinearGradient(0, 0, 0, H)
+            g.add_color_stop_rgba(0, *rgba(p["sky"][0]))
+            g.add_color_stop_rgba(1, *rgba(p["sky"][1]))
+            cr.set_source(g)
+            cr.paint()
+            cr.set_source_rgba(*rgba(p["accent"], 0.9))
+            cr.arc(W * 0.73, H * 0.36, H * 0.14, 0, 2 * math.pi)
+            cr.fill()
+            for pts, col in (([(0, .67), (.12, .56), (.25, .63), (.37, .48), (.5, .62), (.62, .52), (.75, .63), (.87, .54), (1, .62)], p["hills"][0]),
+                             ([(0, .85), (.2, .77), (.42, .85), (.62, .77), (.83, .87), (1, .81)], p["hills"][1])):
+                cr.move_to(0, H)
+                for x, y in pts:
+                    cr.line_to(x * W, y * H)
+                cr.line_to(W, H)
+                cr.close_path()
+                cr.set_source_rgba(*rgba(col))
+                cr.fill()
+            # mini bar + window
+            cr.set_source_rgba(*rgba(p["bg"], 0.72))
+            cr.rectangle(6, 6, W - 12, 10)
+            cr.fill()
+            cr.set_source_rgba(*rgba(p["accent"]))
+            cr.rectangle(10, 8, 6, 6)
+            cr.fill()
+            cr.set_source_rgba(*rgba(p["bg"], 0.92))
+            cr.rectangle(6, 22, W * 0.45, H - 30)
+            cr.fill()
+            for i, (wf, col) in enumerate(((0.6, p["text"]), (0.8, p["muted"]), (0.4, p["accent"]))):
+                cr.set_source_rgba(*rgba(col))
+                cr.rectangle(13, 30 + i * 8, W * 0.45 * wf - 14, 3)
+                cr.fill()
+            return False
+        area.connect("draw", draw)
+        return area
+
+    def build(self):
+        cur = sh(SHOJI, "status")
+        pals = self.palettes()
+        head = Gtk.Box(spacing=12)
+        seal = label("色", "seal", xalign=0.5)
+        head.pack_start(seal, False, False, 0)
+        tb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        tb.pack_start(label("Theme", "title"), False, False, 0)
+        tb.pack_start(label("Bar, panels, launcher, lock screen, terminal, GTK apps and wallpaper.", "muted"), False, False, 0)
+        head.pack_start(tb, True, True, 0)
+        close = Gtk.Button(label=icon("x"))
+        close.get_style_context().add_class("nav")
+        close.connect("clicked", lambda *_: self.manager.close())
+        head.pack_start(close, False, False, 0)
+        self.box.pack_start(head, False, False, 4)
+
+        grid = Gtk.Grid(column_homogeneous=True, column_spacing=12, row_spacing=12)
+        for i, (pid, p) in enumerate(pals.items()):
+            b = Gtk.Button()
+            b.get_style_context().add_class("card")
+            if pid == cur:
+                b.get_style_context().add_class("active")
+            v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            v.pack_start(self.preview(p), False, False, 0)
+            line = Gtk.Box(spacing=6)
+            line.pack_start(label(f"{p['kanji']} {p['name']}", "name"), False, False, 0)
+            line.pack_start(label(p["note"], "label-small"), False, False, 0)
+            line.pack_end(label("in use" if pid == cur else ("dark" if p["dark"] else "light"), "label-small", xalign=1), False, False, 0)
+            v.pack_start(line, False, False, 0)
+            b.add(v)
+            b.connect("clicked", lambda *_, n=pid: self.apply(n))
+            grid.attach(b, i % 3, i // 3, 1, 1)
+        self.box.pack_start(grid, False, False, 4)
+
+        opts = Gtk.Box(spacing=10)
+        pr = prefs()
+        sw = Gtk.Switch(active=bool(pr.get("follow_sun")))
+        sw.set_valign(Gtk.Align.CENTER)
+        sw.connect("notify::active", lambda s, _p: (save_prefs(follow_sun=s.get_active()), self.manager.sun_tick(force=True)))
+        opts.pack_start(sw, False, False, 0)
+        opts.pack_start(label("Follow the sun: light palette 06:00–18:00, your dark one after", "muted"), False, False, 0)
+        num = Gtk.Button(label="一二三 → 123" if pr.get("numerals", "kanji") == "kanji" else "123 → 一二三")
+        num.get_style_context().add_class("chip")
+        num.connect("clicked", lambda *_: self.toggle_numerals())
+        opts.pack_end(num, False, False, 0)
+        self.box.pack_start(opts, False, False, 4)
+        self.box.pack_start(label(f"Same from a terminal: shoji apply {cur} · shoji list · Super+Shift+T", "mono"), False, False, 2)
+
+    def apply(self, name):
+        p = self.palettes()[name]
+        if p["dark"]:
+            save_prefs(dark=name)
+        subprocess.run([SHOJI, "apply", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.show()
+
+    def toggle_numerals(self):
+        save_prefs(numerals="arabic" if prefs().get("numerals", "kanji") == "kanji" else "kanji")
+        subprocess.run([sys.executable, str(HOME / ".config/shoji/gen_waybar.py")], stdout=subprocess.DEVNULL)
+        sh("pkill", "-SIGUSR2", "-x", "waybar")
+        self.show()
+
+
+class Launcher(Popover):
+    """探 Search apps: frequent apps first, typed text matches name, generic name, keywords."""
+    name = "launcher"
+    width = 560
+    ROWS = 8
+    STATE = HOME / ".local/state/shoji/launcher.json"
+
+    def __init__(self, manager):
+        super().__init__(manager, anchor_right=False)
+        Layer.set_margin(self.win, Layer.Edge.TOP, 120)
+        Layer.set_keyboard_mode(self.win, Layer.KeyboardMode.EXCLUSIVE)
+        self.entry = Gtk.Entry(placeholder_text="Search apps")
+        self.entry.get_style_context().add_class("search")
+        self.entry.connect("changed", lambda *_: self.refilter())
+        self.entry.connect("activate", lambda *_: self.launch_selected())
+        self.listbox = Gtk.ListBox()
+        self.listbox.set_selection_mode(Gtk.SelectionMode.BROWSE)
+        self.listbox.set_activate_on_single_click(True)
+        self.listbox.connect("row-activated", lambda _l, row: self.launch(row.app))
+        self.listbox.set_filter_func(lambda row: row.score > 0)
+        self.listbox.set_sort_func(lambda a, b: (b.score > a.score) - (b.score < a.score) or
+                                   (a.app.get_display_name().lower() > b.app.get_display_name().lower()) - 
+                                   (a.app.get_display_name().lower() < b.app.get_display_name().lower()))
+        self.scroll = Gtk.ScrolledWindow()
+        self.scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.scroll.set_size_request(-1, self.ROWS * 44)
+        self.scroll.add(self.listbox)
+        self.section = label("", "label-small")
+        self.empty = label("", "muted")
+        self.rows = []
+
+    def counts(self):
+        try:
+            return json.loads(self.STATE.read_text())
+        except (OSError, ValueError):
+            return {}
+
+    def build(self):
+        head = Gtk.Box(spacing=10)
+        head.get_style_context().add_class("searchbar")
+        head.pack_start(label(icon("search"), "icon", xalign=0.5), False, False, 0)
+        head.pack_start(self.entry, True, True, 0)
+        esc = label("Esc", "kbd")
+        esc.set_valign(Gtk.Align.CENTER)
+        head.pack_start(esc, False, False, 0)
+        self.box.pack_start(head, False, False, 0)
+        self.box.pack_start(self.section, False, False, 2)
+        self.box.pack_start(self.scroll, False, False, 0)
+        self.box.pack_start(self.empty, False, False, 0)
+        self.box.pack_start(label("↑↓ move · ↵ open · type to search", "mono"), False, False, 2)
+        self.load_apps()
+
+    def load_apps(self):
+        for row in self.listbox.get_children():
+            self.listbox.remove(row)
+        self.rows = []
+        counts = self.counts()
+        for app in Gio.AppInfo.get_all():
+            if not app.should_show():
+                continue
+            row = Gtk.ListBoxRow()
+            row.get_style_context().add_class("app-row")
+            row.app, row.uses = app, counts.get(app.get_id() or "", 0)
+            line = Gtk.Box(spacing=12)
+            img = Gtk.Image.new_from_gicon(app.get_icon() or Gio.ThemedIcon.new("application-x-executable"),
+                                           Gtk.IconSize.DND)
+            img.set_pixel_size(24)
+            line.pack_start(img, False, False, 0)
+            text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            text.set_valign(Gtk.Align.CENTER)
+            text.pack_start(label(app.get_display_name(), "app-name"), False, False, 0)
+            desc = app.get_description() or (app.get_generic_name() if hasattr(app, "get_generic_name") else "") or ""
+            if desc:
+                d = label(desc, "desc")
+                d.set_ellipsize(3)
+                text.pack_start(d, False, False, 0)
+            line.pack_start(text, True, True, 0)
+            dot = Gtk.Box()
+            dot.get_style_context().add_class("dot")
+            dot.set_valign(Gtk.Align.CENTER)
+            line.pack_start(dot, False, False, 0)
+            row.add(line)
+            keys = [app.get_display_name(), app.get_name() or ""]
+            if isinstance(app, Gio.DesktopAppInfo):
+                keys += [app.get_generic_name() or "", " ".join(app.get_keywords() or []),
+                         (app.get_executable() or "").split("/")[-1]]
+            row.keys = [k.lower() for k in keys if k]
+            row.score = 1
+            self.listbox.add(row)
+            self.rows.append(row)
+
+    @staticmethod
+    def match(q, keys):
+        best = 0
+        for i, k in enumerate(keys):
+            w = 1.0 if i < 2 else 0.6  # the name counts more than keywords
+            if k.startswith(q):
+                best = max(best, 100 * w)
+            elif any(part.startswith(q) for part in k.replace("-", " ").split()):
+                best = max(best, 80 * w)
+            elif q in k:
+                best = max(best, 60 * w)
+            else:
+                it = iter(k)
+                if all(ch in it for ch in q):
+                    best = max(best, 25 * w)
+        return best
+
+    def refilter(self):
+        q = self.entry.get_text().strip().lower()
+        for row in self.rows:
+            base = self.match(q, row.keys) if q else 1
+            row.score = base + min(row.uses, 40) * (0.5 if q else 1) if base else 0
+        self.listbox.invalidate_filter()
+        self.listbox.invalidate_sort()
+        visible = [r for r in self.rows if r.score > 0]
+        self.section.set_text("FREQUENT · ALL APPS" if not q else f"RESULTS · {len(visible)}")
+        self.empty.set_text(f"No app matches “{q}”." if q and not visible else "")
+        self.empty.set_visible(bool(q and not visible))
+        if visible:
+            first = min(visible, key=lambda r: (-r.score, r.app.get_display_name().lower()))
+            self.listbox.select_row(first)
+            self.scroll.get_vadjustment().set_value(0)
+
+    def on_key(self, w, ev):
+        if ev.keyval in (Gdk.KEY_Down, Gdk.KEY_Up, Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
+            down = ev.keyval in (Gdk.KEY_Down, Gdk.KEY_Tab)
+            visible = sorted((r for r in self.rows if r.score > 0), key=lambda r: r.get_index())
+            cur = self.listbox.get_selected_row()
+            if visible:
+                i = visible.index(cur) if cur in visible else -1
+                nxt = visible[max(0, min(len(visible) - 1, i + (1 if down else -1)))]
+                self.listbox.select_row(nxt)
+                a = nxt.get_allocation()
+                adj = self.scroll.get_vadjustment()
+                if a.y < adj.get_value():
+                    adj.set_value(a.y)
+                elif a.y + a.height > adj.get_value() + adj.get_page_size():
+                    adj.set_value(a.y + a.height - adj.get_page_size())
+            return True
+        return super().on_key(w, ev)
+
+    def launch_selected(self):
+        row = self.listbox.get_selected_row()
+        if row and row.score > 0:
+            self.launch(row.app)
+
+    def launch(self, app):
+        counts = self.counts()
+        counts[app.get_id() or app.get_name()] = counts.get(app.get_id() or app.get_name(), 0) + 1
+        self.STATE.parent.mkdir(parents=True, exist_ok=True)
+        self.STATE.write_text(json.dumps(counts))
+        self.manager.close()
+        ctx = Gdk.Display.get_default().get_app_launch_context()
+        try:
+            app.launch([], ctx)
+        except GLib.Error as e:
+            print("launch:", e, file=sys.stderr)
+
+    def show(self):
+        load_css()
+        self.clear()
+        self.build()
+        self.entry.set_text("")
+        self.refilter()
+        self.box.show_all()
+        self.empty.set_visible(False)
+        self.win.show()
+        self.win.present()
+        self.entry.grab_focus()
+
+
+class Popovers:
+    def __init__(self):
+        self.backdrop = Backdrop(self.close)
+        self.items = {cls.name: cls(self) for cls in (Sound, Network)}
+        self.items["theme"] = ThemeManager(self)
+        self.items["launcher"] = Launcher(self)
+        self.open = None
+        GLib.timeout_add_seconds(300, self.sun_tick)
+
+    def toggle(self, name):
+        if name not in self.items:
+            return
+        if self.open == name:
+            self.close()
+            return
+        self.close()
+        self.backdrop.win.show()
+        self.items[name].show()
+        self.open = name
+
+    def close(self):
+        if self.open:
+            self.items[self.open].hide()
+        self.backdrop.win.hide()
+        self.open = None
+
+    def sun_tick(self, force=False):
+        """Follow the sun: switch to the light palette at 06:00 and the dark one at 18:00.
+
+        Only at the change of period (or when the switch is turned on), so a palette picked
+        by hand stays until the next sunrise or sunset."""
+        pr = prefs()
+        if not pr.get("follow_sun"):
+            return True
+        period = "day" if 6 <= datetime.datetime.now().hour < 18 else "night"
+        if force or pr.get("sun_period") != period:
+            dark = pr.get("dark", "aizome")
+            want = {"aizome": "yuki"}.get(dark, "hiru") if period == "day" else dark
+            save_prefs(sun_period=period)
+            if sh(SHOJI, "status") != want:
+                spawn(SHOJI, "apply", want)
+        return True
+
+
+# ---------------------------------------------------------------- wiring
+def watch_fifo(osd, pops):
+    if FIFO.exists() and not FIFO.is_fifo():
+        FIFO.unlink()
+    if not FIFO.exists():
+        os.mkfifo(FIFO, 0o600)
+    # read+write keeps the pipe open, so writers never block and EOF never fires
+    fd = os.open(FIFO, os.O_RDWR | os.O_NONBLOCK)
+    buf = b""
+
+    def on_data(_fd, _cond):
+        nonlocal buf
+        try:
+            buf += os.read(fd, 4096)
+        except BlockingIOError:
+            return True
+        *lines, buf = buf.split(b"\n")
+        osd_line = None
+        for raw in lines:
+            parts = raw.decode(errors="replace").split("\t")
+            if len(parts) == 2 and parts[0] == "pop":
+                pops.toggle(parts[1])
+            elif len(parts) == 4 and parts[2].isdigit():
+                osd_line = parts
+        if osd_line:  # only the newest level matters when the knob spins fast
+            osd.show(osd_line[1], int(osd_line[2]), osd_line[3] == "1")
+        return True
+
+    GLib.unix_fd_add_full(GLib.PRIORITY_DEFAULT, fd, GLib.IOCondition.IN, on_data)
+
+
+def watch_swaync(cal):
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+
+    def apply(cc_open):
+        cal.show() if cc_open else cal.hide()
+
+    def on_signal(_conn, _sender, _path, _iface, _name, params):
+        apply(params.unpack()[2])
+
+    bus.signal_subscribe("org.erikreider.swaync.cc", "org.erikreider.swaync.cc", "SubscribeV2",
+                         "/org/erikreider/swaync/cc", None, Gio.DBusSignalFlags.NONE, on_signal)
+    try:
+        res = bus.call_sync("org.erikreider.swaync.cc", "/org/erikreider/swaync/cc",
+                            "org.erikreider.swaync.cc", "GetVisibility", None,
+                            GLib.VariantType("(b)"), Gio.DBusCallFlags.NONE, 1000, None)
+        apply(res.unpack()[0])
+    except GLib.Error:
+        pass  # swaync not up yet; the signal arrives once it is
+
+
+def main():
+    try:
+        old = int(PIDFILE.read_text())
+        os.kill(old, 0)
+        sys.exit(f"hypr-widgets already running (pid {old})")
+    except (OSError, ValueError):
+        pass
+    PIDFILE.write_text(str(os.getpid()))
+    Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), provider,
+                                             Gtk.STYLE_PROVIDER_PRIORITY_USER)
+    load_css()
+    pops = Popovers()
+    watch_fifo(Osd(), pops)
+    watch_swaync(Calendar())
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, 15, Gtk.main_quit)  # SIGTERM
+    try:
+        Gtk.main()
+    finally:
+        PIDFILE.unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    main()

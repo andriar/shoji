@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Bar clock: time in Shippori Mincho + weekday in kanji (waybar custom module, JSON).
+wd=$(~/.local/bin/shoji weekday-kanji)
+printf '{"text":"<span font_family=\\"Shippori Mincho\\" weight=\\"bold\\" size=\\"11.5pt\\">%s</span>  <span font_family=\\"Shippori Mincho\\" size=\\"10pt\\" alpha=\\"70%%\\">%s</span>","tooltip":"%s"}\n' \
+  "$(date +%H:%M)" "$wd" "$(date '+%A, %-d %B %Y')\nClick: calendar, quick settings, notifications"

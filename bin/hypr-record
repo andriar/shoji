@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Toggle region screen recording with wf-recorder. `status` prints waybar JSON.
+DIR="$HOME/Videos"
+
+case "${1:-toggle}" in
+  status)
+    if pgrep -x wf-recorder >/dev/null; then
+      echo '{"text":"󰑊 REC","class":"recording","tooltip":"Recording — Super+Shift+R to stop"}'
+    else
+      echo '{"text":"","class":"idle"}'
+    fi
+    ;;
+  toggle)
+    if pgrep -x wf-recorder >/dev/null; then
+      pkill -INT -x wf-recorder
+      notify-send -a "Recorder" "Recording saved" "$DIR"
+    else
+      region="$(slurp)" || exit 0
+      file="$DIR/recording-$(date +%F_%H-%M-%S).mp4"
+      setsid -f wf-recorder -g "$region" -f "$file" >/dev/null 2>&1
+      notify-send -a "Recorder" "Recording started" "Super+Shift+R to stop"
+    fi
+    pkill -RTMIN+9 waybar
+    ;;
+esac

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Path of the ensō ring image for waybar's image modules (rendered by `shoji apply`).
+# Usage: shoji-level vol|bat   — prints nothing when there is no level to show (module hides)
+DIR="$HOME/.cache/shoji/enso"
+step() { awk -v v="$1" 'BEGIN { s = int((v + 2.5) / 5) * 5; if (s > 100) s = 100; if (s < 0) s = 0; print s }'; }
+case "$1" in
+  vol)
+    read -r _ v muted < <(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null) || exit 0
+    pct=$(awk -v v="$v" 'BEGIN { printf "%d", v * 100 + 0.5 }')
+    if [ -n "$muted" ]; then echo "$DIR/muted-$(step "$pct").png"; else echo "$DIR/accent-$(step "$pct").png"; fi
+    ;;
+  bat)
+    bat=$(ls -d /sys/class/power_supply/BAT* 2>/dev/null | head -1)
+    [ -n "$bat" ] || exit 0
+    cap=$(cat "$bat/capacity"); status=$(cat "$bat/status")
+    if [ "$status" = Charging ] || [ "$status" = Full ]; then kind=ok
+    elif [ "$cap" -le 20 ]; then kind=alert
+    else kind=text; fi
+    echo "$DIR/$kind-$(step "$cap").png"
+    ;;
+esac

@@ -1,0 +1,609 @@
+#!/usr/bin/env python3
+"""Shoji (障子) — one palette file for the whole Hyprland desktop.
+
+Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|date-kanji|weekday-kanji]
+  apply NAME    switch to a palette (no NAME: re-apply the saved one, quiet; Hyprland autostart)
+  list          palettes, the current one marked
+  toggle        dark <-> light (Hiru, or Yuki for Aizome)
+  doctor        contrast of text / muted / accent against the ground
+  gnome         put GTK back to the GNOME session's look (GNOME autostart)
+  wallpaper [P] show P (default: the last one) with awww, hyprpaper or swaybg
+  date-kanji    十月二十四日 · 土曜日   (lock screen)
+  weekday-kanji 土                    (bar)
+
+Every app config imports a generated file; nothing else hard-codes a hex value.
+Also renders, per palette: the ink-mountain wallpaper, the lock-screen ensō and
+the bar's ensō level rings (~/.cache/shoji).
+"""
+import datetime
+import json
+import math
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+HOME = Path.home()
+CFG = HOME / ".config"
+CACHE = HOME / ".cache/shoji"
+STATE = HOME / ".local/state/shoji"
+WALLS = HOME / "Pictures/Wallpapers"
+DEFAULT = "aizome"
+GNOME_GTK = "catppuccin-mocha-peach-standard+default"
+CURSOR = "Bibata-Modern-Classic"
+ICON_THEME = HOME / ".local/share/icons/Shoji"
+
+DARK_ANSI = ["#e0707a", "#a3b46f", "#d9b05a", "#7f9dcb", "#b49ac9", "#7fb8b5",
+             "#ec8f97", "#b8c789", "#e6c47c", "#9cb4da", "#c7b1d9", "#9ccbc8"]
+LIGHT_ANSI = ["#a3303c", "#56682a", "#86661c", "#2e5185", "#7a4a8c", "#2f6f6a",
+              "#c0424e", "#6b7f36", "#9c7a26", "#3d64a0", "#8f5aa3", "#3c8580"]
+
+PALETTES = {
+    "aizome": dict(kanji="藍染", name="Aizome", note="indigo · gold", dark=True, pair="yuki",
+                   bg="#111827", text="#e6e9f0", muted="#97a0b5", accent="#d9b05a", on_accent="#17161b",
+                   sky=("#10172a", "#1b2540"), hills=("#172036", "#121a2d", "#0c1220")),
+    "yoru": dict(kanji="夜", name="Yoru", note="ink · vermilion", dark=True, pair="hiru",
+                 bg="#17161b", text="#ece6d8", muted="#a39d8f", accent="#e8603f", on_accent="#17161b",
+                 sky=("#1c1b24", "#2a2733"), hills=("#24222c", "#1d1c23", "#141318")),
+    "yozakura": dict(kanji="夜桜", name="Yozakura", note="night · sakura", dark=True, pair="hiru",
+                     bg="#1b1720", text="#efe4ea", muted="#a898a6", accent="#ec93ad", on_accent="#17161b",
+                     sky=("#1d1822", "#2c2433"), hills=("#262029", "#1f1a22", "#151217")),
+    "koke": dict(kanji="苔", name="Koke", note="moss garden", dark=True, pair="hiru",
+                 bg="#131814", text="#e3e8dc", muted="#97a293", accent="#a9c47c", on_accent="#17161b",
+                 sky=("#141a16", "#202a22"), hills=("#1b231d", "#161d18", "#0f1411")),
+    "hiru": dict(kanji="昼", name="Hiru", note="washi · vermilion", dark=False, pair="yoru",
+                 bg="#f3eee3", text="#1f1d19", muted="#6a655b", accent="#b0402a", on_accent="#fbf8f1",
+                 sky=("#f6f1e6", "#e6dece"), hills=("#d9d0bf", "#c9bfac", "#b3a893")),
+    "yuki": dict(kanji="雪", name="Yuki", note="snow · indigo", dark=False, pair="aizome",
+                 bg="#f2f4f6", text="#1b2230", muted="#5d6675", accent="#2e5185", on_accent="#fbf8f1",
+                 sky=("#f4f6f8", "#dfe5ec"), hills=("#cfd7e1", "#bcc6d3", "#a5b1c1")),
+}
+WEEK_K = "月火水木金土日"  # datetime.weekday(): Monday = 0
+KNUM = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
+
+
+# ---------- color helpers ----------
+def rgb(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def hexc(c):
+    return "#%02x%02x%02x" % tuple(max(0, min(255, round(v))) for v in c)
+
+
+def mix(a, b, t):
+    return hexc(tuple(x + (y - x) * t for x, y in zip(rgb(a), rgb(b))))
+
+
+def rgba(h, a):
+    r, g, b = rgb(h)
+    return f"rgba({r}, {g}, {b}, {a})"
+
+
+def lum(h):
+    def ch(v):
+        v /= 255
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+    r, g, b = (ch(v) for v in rgb(h))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast(a, b):
+    la, lb = sorted((lum(a), lum(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+def tokens(name):
+    """Palette -> every token the configs use (Catppuccin-style names kept for old CSS)."""
+    p = PALETTES[name]
+    dark = p["dark"]
+    a = DARK_ANSI if dark else LIGHT_ANSI
+    bg, text = p["bg"], p["text"]
+    shade = "#000000"
+    t = dict(
+        base=bg, mantle=mix(bg, shade, 0.18 if dark else 0.04), crust=mix(bg, shade, 0.32 if dark else 0.08),
+        surface0=mix(bg, text, 0.10), surface1=mix(bg, text, 0.16), surface2=mix(bg, text, 0.26),
+        overlay0=mix(bg, text, 0.45), subtext0=p["muted"], muted=p["muted"], text=text,
+        red=a[0], green=a[1], yellow=a[2], blue=a[3], mauve=a[4], teal=a[5],
+        pink=a[10], lavender=a[9], rosewater=text, peach=p["accent"],
+        accent=p["accent"], accent2=p["accent"], on_accent=p["on_accent"], accent_text=p["accent"],
+        ok=a[1], alert=a[0], warn=a[2], info=a[3],
+    )
+    return t
+
+
+# ---------- generators ----------
+def write(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def sed(path, pattern, repl):
+    if path.exists():
+        path.write_text(re.sub(pattern, repl, path.read_text(), flags=re.M))
+
+
+def run(*cmd):
+    # a reload must never block a palette switch (swaync-client waits forever when swaync is down)
+    try:
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=5)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
+
+def generate(name):
+    p = PALETTES[name]
+    t = tokens(name)
+    header = f"Generated by shoji ({p['name']}) — edit ~/.local/bin/shoji, not this file"
+    bare = {k: v.lstrip("#") for k, v in t.items()}
+
+    # Hyprland (Lua) + hyprlang twin for hyprlock / fallback hyprland.conf
+    write(CFG / "hypr/theme.lua", f"-- {header}\nreturn {{\n"
+          + "".join(f'    {k:<11} = "rgb({v})",\n' for k, v in bare.items())
+          + f'    edge        = "rgba({bare["text"]}24)",\n'
+          + f'    edge_dim    = "rgba({bare["text"]}0f)",\n'
+          + f'    edge_active = "rgba({bare["text"]}47)",\n'
+          + f'    shadow      = "rgba(000000{"55" if p["dark"] else "28"})",\n' + "}\n")
+    write(CFG / "hypr/theme.conf", f"# {header}\n"
+          + "".join(f"${k} = rgb({v})\n" for k, v in bare.items())
+          + f"$edge = rgba({bare['text']}24)\n$glass = rgba({bare['base']}9e)\n"
+          + f"$font_ui = Zen Kaku Gothic New\n$font_display = Shippori Mincho\n")
+
+    # GTK3 CSS consumers: waybar, wlogout, swaync, hypr-widgets
+    css = f"/* {header} */\n" + "".join(f"@define-color {k} {v};\n" for k, v in t.items())
+    css += "".join(f"@define-color {k} {v};\n" for k, v in {
+        # paper glass: bar < panels < tooltips; edge = hairline; group = chip fill
+        "elev1": rgba(t["base"], 0.62), "elev2": rgba(t["base"], 0.80), "elev3": rgba(t["base"], 0.92),
+        "edge": rgba(t["text"], 0.14), "group": rgba(t["text"], 0.06), "hover": rgba(t["text"], 0.10),
+        "track": rgba(t["text"], 0.12),
+    }.items())
+    write(CFG / "waybar/colors.css", css)
+    write(CFG / "wlogout/colors.css", css + f"@define-color backdrop {rgba(t['crust'], 0.85)};\n")
+    write(CFG / "swaync/colors.css", css)
+
+    # fuzzel (included from fuzzel.ini)
+    write(CFG / "fuzzel/colors.ini", f"# {header}\n[main]\nicon-theme=Shoji\n"
+          f"[colors]\nbackground={bare['base']}e6\ntext={bare['text']}ff\nprompt={bare['muted']}ff\n"
+          f"placeholder={bare['muted']}ff\ninput={bare['text']}ff\nmatch={bare['accent']}ff\n"
+          f"selection={bare['surface1']}ff\nselection-text={bare['text']}ff\n"
+          f"selection-match={bare['accent']}ff\ncounter={bare['muted']}ff\nborder={bare['surface2']}ff\n")
+
+    # Ghostty: full 16-color palette
+    a = DARK_ANSI if p["dark"] else LIGHT_ANSI
+    ansi = [mix(t["base"], t["text"], 0.08)] + a[:6] + [mix(t["base"], t["text"], 0.78),
+            mix(t["base"], t["text"], 0.42)] + a[6:] + [t["text"]]
+    write(CFG / "ghostty/theme-local", f"# {header}\n"
+          f"background = {t['base']}\nforeground = {t['text']}\n"
+          f"cursor-color = {t['text']}\ncursor-text = {t['base']}\n"
+          f"selection-background = {mix(t['base'], t['accent'], 0.28)}\nselection-foreground = {t['text']}\n"
+          + "".join(f"palette = {i}={c}\n" for i, c in enumerate(ansi)))
+
+    # starship: replace the generated palette block
+    star = CFG / "starship.toml"
+    if star.exists():
+        block = ("[palettes.shoji]\n" + f'text = "{t["text"]}"\nmuted = "{t["muted"]}"\n'
+                 f'accent = "{t["accent"]}"\nalert = "{t["alert"]}"\n')
+        s = star.read_text()
+        s = re.sub(r"\[palettes\.[a-z]+\]\n(?:[a-z]+ = \"#[0-9a-f]{6}\"\n)+", block, s)
+        s = re.sub(r'^palette = ".*"$', 'palette = "shoji"', s, flags=re.M)
+        star.write_text(s)
+
+    # btop
+    write(CFG / "btop/themes/shoji.theme", f"# {header}\n" + "".join(
+        f'theme[{k}]="{v}"\n' for k, v in {
+            "main_bg": t["base"], "main_fg": t["text"], "title": t["text"], "hi_fg": t["accent"],
+            "selected_bg": t["surface1"], "selected_fg": t["text"], "inactive_fg": t["overlay0"],
+            "graph_text": t["muted"], "meter_bg": t["surface1"], "proc_misc": t["muted"],
+            "cpu_box": t["surface2"], "mem_box": t["surface2"], "net_box": t["surface2"], "proc_box": t["surface2"],
+            "div_line": t["surface1"], "temp_start": t["ok"], "temp_mid": t["warn"], "temp_end": t["alert"],
+            "cpu_start": t["muted"], "cpu_mid": t["accent"], "cpu_end": t["alert"],
+            "free_start": t["ok"], "free_mid": t["ok"], "free_end": t["ok"],
+            "cached_start": t["info"], "cached_mid": t["info"], "cached_end": t["info"],
+            "available_start": t["muted"], "available_mid": t["muted"], "available_end": t["muted"],
+            "used_start": t["accent"], "used_mid": t["accent"], "used_end": t["alert"],
+            "download_start": t["info"], "download_mid": t["info"], "download_end": t["text"],
+            "upload_start": t["accent"], "upload_mid": t["accent"], "upload_end": t["text"],
+            "process_start": t["muted"], "process_mid": t["accent"], "process_end": t["alert"],
+        }.items()))
+    sed(CFG / "btop/btop.conf", r"^color_theme = .*$", f'color_theme = "{CFG}/btop/themes/shoji.theme"')
+
+    # qt6ct (role order: WindowText Button Light Midlight Dark Mid Text BrightText ButtonText Base
+    #        Window Shadow Highlight HighlightedText Link LinkVisited AlternateBase NoRole
+    #        ToolTipBase ToolTipText PlaceholderText Accent)
+    def qrow(fg, hl, hl_fg):
+        c = [fg, t["surface1"], t["surface2"], t["surface0"], t["crust"], t["mantle"], fg, t["text"], fg,
+             t["base"], t["mantle"], t["crust"], hl, hl_fg, t["info"], t["mauve"], t["mantle"], "#ffffff",
+             t["base"], t["text"], t["overlay0"], t["accent"]]
+        return ", ".join("#ff" + x.lstrip("#") for x in c)
+    write(CFG / "qt6ct/colors/shoji.conf", "[ColorScheme]\n"
+          f"active_colors={qrow(t['text'], t['accent'], t['on_accent'])}\n"
+          f"inactive_colors={qrow(t['muted'], t['surface1'], t['text'])}\n"
+          f"disabled_colors={qrow(t['overlay0'], t['mantle'], t['overlay0'])}\n")
+    sed(CFG / "qt6ct/qt6ct.conf", r"^color_scheme_path=.*$", f"color_scheme_path={CFG}/qt6ct/colors/shoji.conf")
+    sed(CFG / "qt6ct/qt6ct.conf", r"^icon_theme=.*$", "icon_theme=Shoji")
+
+    render_folders(t, p["dark"])
+    apply_gtk(name, t)
+
+    # fzf (sourced from ~/.zshrc)
+    write(CFG / "shoji/fzf.sh", f"# {header}\nexport FZF_DEFAULT_OPTS=\""
+          f"--color=bg+:{t['surface0']},bg:-1,spinner:{t['accent']},hl:{t['accent']}"
+          f",fg:{t['text']},header:{t['muted']},info:{t['muted']},pointer:{t['accent']}"
+          f",marker:{t['accent']},fg+:{t['text']},prompt:{t['accent']},hl+:{t['accent']}"
+          f",selected-bg:{t['surface1']},border:{t['surface2']},label:{t['text']}\"\n")
+
+    # widgets + renders
+    write(CFG / "shoji/current.json", json.dumps(dict(id=name, **{k: v for k, v in p.items() if k not in ("sky", "hills")},
+                                                      tokens=t), indent=1, ensure_ascii=False) + "\n")
+    render_enso_levels(t)
+    render_lock_enso(t)
+    wall = render_wallpaper(name)
+    write(STATE, name + "\n")
+    return wall
+
+
+def cursor_installed():
+    return any((Path(d) / "icons" / CURSOR).exists() for d in (HOME / ".local/share", HOME / ".icons", "/usr/share"))
+
+
+def apply_gtk(name, t):
+    """GTK 3/4 look. ~/.config/gtk-* is shared with GNOME; `shoji gnome` undoes this there."""
+    dark = PALETTES[name]["dark"]
+    icons = "Shoji" if ICON_THEME.exists() else ("Papirus-Dark" if dark else "Papirus")
+    run("gsettings", "set", "org.gnome.desktop.interface", "gtk-theme", "Adwaita-dark" if dark else "Adwaita")
+    run("gsettings", "set", "org.gnome.desktop.interface", "color-scheme", "prefer-dark" if dark else "prefer-light")
+    run("gsettings", "set", "org.gnome.desktop.interface", "icon-theme", icons)
+    run("gsettings", "set", "org.gnome.desktop.interface", "font-name", "Zen Kaku Gothic New 11")
+    run("gsettings", "set", "org.gnome.desktop.interface", "document-font-name", "Zen Kaku Gothic New 11")
+    named = {
+        "accent_color": t["accent"], "accent_bg_color": t["accent"], "accent_fg_color": t["on_accent"],
+        "window_bg_color": t["base"], "window_fg_color": t["text"],
+        "view_bg_color": t["mantle"] if dark else "#ffffff", "view_fg_color": t["text"],
+        "headerbar_bg_color": t["base"], "headerbar_fg_color": t["text"], "headerbar_backdrop_color": t["base"],
+        "sidebar_bg_color": t["mantle"], "sidebar_fg_color": t["text"], "secondary_sidebar_bg_color": t["mantle"],
+        "card_bg_color": rgba(t["text"], 0.05), "card_fg_color": t["text"],
+        "popover_bg_color": t["surface0"], "popover_fg_color": t["text"],
+        "dialog_bg_color": t["surface0"], "dialog_fg_color": t["text"],
+        "destructive_bg_color": t["alert"], "destructive_color": t["alert"],
+        "success_color": t["ok"], "warning_color": t["warn"], "error_color": t["alert"],
+        # GTK3 Adwaita names
+        "theme_bg_color": t["base"], "theme_fg_color": t["text"], "theme_base_color": t["mantle"] if dark else "#ffffff",
+        "theme_text_color": t["text"], "theme_selected_bg_color": t["accent"], "theme_selected_fg_color": t["on_accent"],
+        "insensitive_fg_color": t["overlay0"], "borders": t["surface1"],
+    }
+    gtkcss = "/* Generated by shoji — GNOME logins remove this file (shoji gnome) */\n" + "".join(
+        f"@define-color {k} {v};\n" for k, v in named.items())
+    for ver in ("gtk-3.0", "gtk-4.0"):
+        for fname in ("gtk.css", "gtk-dark.css") if ver == "gtk-4.0" else ("gtk.css",):
+            f = CFG / ver / fname
+            if f.is_symlink():
+                f.unlink()
+            write(f, gtkcss)
+        write(CFG / ver / "settings.ini", f"[Settings]\ngtk-application-prefer-dark-theme={int(dark)}\n"
+              f"gtk-icon-theme-name={icons}\ngtk-font-name=Zen Kaku Gothic New 11\n"
+              + (f"gtk-cursor-theme-name={CURSOR}\ngtk-cursor-theme-size=24\n" if cursor_installed() else ""))
+    assets = CFG / "gtk-4.0/assets"
+    if assets.is_symlink():
+        assets.unlink()
+
+
+FOLDER_GLYPHS = {  # Lucide icon paths (ISC), drawn on the folder front
+    'clapperboard': '<path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/> <path d="m6.2 5.3 3.1 3.9"/> <path d="m12.4 3.4 3.1 4"/> <path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+    'code-xml': '<path d="m18 16 4-4-4-4"/> <path d="m6 8-4 4 4 4"/> <path d="m14.5 4-5 16"/>',
+    'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/> <polyline points="7 10 12 15 17 10"/> <line x1="12" x2="12" y1="15" y2="3"/>',
+    'file-text': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/> <path d="M14 2v4a2 2 0 0 0 2 2h4"/> <path d="M10 9H8"/> <path d="M16 13H8"/> <path d="M16 17H8"/>',
+    'globe': '<circle cx="12" cy="12" r="10"/> <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/> <path d="M2 12h20"/>',
+    'house': '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/> <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    'image': '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/> <circle cx="9" cy="9" r="2"/> <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+    'layout-template': '<rect width="18" height="7" x="3" y="3" rx="1"/> <rect width="9" height="7" x="3" y="14" rx="1"/> <rect width="5" height="7" x="16" y="14" rx="1"/>',
+    'monitor': '<rect width="20" height="14" x="2" y="3" rx="2"/> <line x1="8" x2="16" y1="21" y2="21"/> <line x1="12" x2="12" y1="17" y2="21"/>',
+    'music': '<path d="M9 18V5l12-2v13"/> <circle cx="6" cy="18" r="3"/> <circle cx="18" cy="16" r="3"/>',
+    'share-2': '<circle cx="18" cy="5" r="3"/> <circle cx="6" cy="12" r="3"/> <circle cx="18" cy="19" r="3"/> <line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/> <line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/>',
+    'star': '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
+}
+FOLDER_ICONS = {
+    "folder": None, "folder-open": None, "inode-directory": None,
+    "folder-documents": "file-text", "folder-download": "download", "folder-music": "music",
+    "folder-pictures": "image", "folder-videos": "clapperboard", "user-desktop": "monitor",
+    "user-home": "house", "folder-templates": "layout-template", "folder-publicshare": "share-2",
+    "folder-remote": "globe", "folder-development": "code-xml", "user-bookmarks": "star",
+}
+
+
+def render_folders(t, dark):
+    """Icon theme "Shoji": our own paper folders, everything else inherited from Papirus.
+
+    Original artwork (MIT) with Lucide glyphs, so it ships with the theme and needs no
+    particular Papirus folder color installed."""
+    import shutil
+    if ICON_THEME.exists():
+        shutil.rmtree(ICON_THEME)
+    out = ICON_THEME / "scalable/places"
+    out.mkdir(parents=True)
+    front = mix(t["accent"], t["text"], 0.12)
+    back = mix(front, t["base"], 0.30)
+    paper = t["text"] if dark else "#ffffff"
+    ink = t["on_accent"]
+    for name, glyph in FOLDER_ICONS.items():
+        mark = ""
+        if glyph:
+            mark = (f'<g transform="translate(20 28)" fill="none" stroke="{ink}" stroke-width="2.1" '
+                    f'stroke-linecap="round" stroke-linejoin="round">{FOLDER_GLYPHS[glyph]}</g>')
+        svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'
+               f'<path d="M5 14a5 5 0 0 1 5-5h13.5a3 3 0 0 1 2.1.9L30 14h24a5 5 0 0 1 5 5v31H5z" fill="{back}"/>'
+               f'<rect x="10" y="17" width="44" height="18" rx="2" fill="{paper}" opacity="0.92"/>'
+               f'<rect x="4" y="22" width="56" height="35" rx="5" fill="{front}"/>'
+               f'{mark}</svg>')
+        (out / f"{name}.svg").write_text(svg)
+    inherits = "Papirus-Dark" if dark else "Papirus"
+    if not any((Path(d) / "icons" / inherits).exists() for d in (HOME / ".local/share", "/usr/local/share", "/usr/share")):
+        inherits = "Adwaita"
+    (ICON_THEME / "index.theme").write_text(
+        "[Icon Theme]\nName=Shoji\nComment=Paper folders in the Shoji palette\n"
+        f"Inherits={inherits},hicolor\nDirectories=scalable/places\n\n"
+        "[scalable/places]\nSize=64\nContext=Places\nType=Scalable\nMinSize=16\nMaxSize=512\n")
+    run("gtk-update-icon-cache", "-f", "-q", str(ICON_THEME))
+
+
+def gnome_reset():
+    """GNOME session: Catppuccin Mocha GTK like before Shoji."""
+    run("gsettings", "set", "org.gnome.desktop.interface", "gtk-theme", GNOME_GTK)
+    run("gsettings", "set", "org.gnome.desktop.interface", "color-scheme", "prefer-dark")
+    run("gsettings", "set", "org.gnome.desktop.interface", "icon-theme", "Papirus-Dark")
+    run("gsettings", "set", "org.gnome.desktop.interface", "font-name", "Cantarell 11")
+    run("gsettings", "set", "org.gnome.desktop.interface", "document-font-name", "Cantarell 11")
+    gcss = CFG / "gtk-3.0/gtk.css"
+    if gcss.exists() and "shoji" in gcss.read_text():
+        gcss.unlink()
+    src = HOME / ".local/share/themes" / GNOME_GTK / "gtk-4.0"
+    for fname in ("assets", "gtk.css", "gtk-dark.css"):
+        link = CFG / "gtk-4.0" / fname
+        if link.is_symlink() or link.exists():
+            link.unlink()
+        link.symlink_to(src / fname)
+    for ver in ("gtk-3.0", "gtk-4.0"):
+        write(CFG / ver / "settings.ini", "[Settings]\ngtk-application-prefer-dark-theme=1\n"
+              f"gtk-icon-theme-name=Papirus-Dark\ngtk-cursor-theme-name={CURSOR}\ngtk-cursor-theme-size=24\n")
+
+
+# ---------- renders (cairo) ----------
+def cairo_rgb(h, a=1.0):
+    r, g, b = rgb(h)
+    return (r / 255, g / 255, b / 255, a)
+
+
+def enso(ctx, cx, cy, r, frac, color, width, gap=0.06, inner=True):
+    """Open brush circle: main stroke + a thin offset echo, drawn clockwise from the top."""
+    import cairo
+    start = -math.pi / 2 - math.radians(6)
+    ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+    if frac > 0:
+        ctx.set_source_rgba(*color)
+        ctx.set_line_width(width)
+        ctx.arc(cx, cy, r, start, start + 2 * math.pi * (1 - gap) * frac)
+        ctx.stroke()
+        if inner and frac > 0.08:
+            ctx.set_source_rgba(color[0], color[1], color[2], color[3] * 0.5)
+            ctx.set_line_width(max(1, width * 0.25))
+            ctx.arc(cx, cy, r - width * 0.75, start + 0.06, start + 2 * math.pi * (1 - gap) * frac * 0.8)
+            ctx.stroke()
+
+
+def render_enso_levels(t):
+    """Bar rings 0..100 step 5: accent (level), muted (muted), alert (low battery), ok (charging)."""
+    import cairo
+    out = CACHE / "enso"
+    out.mkdir(parents=True, exist_ok=True)
+    size = 36
+    for kind, col in (("accent", t["accent"]), ("muted", t["muted"]), ("alert", t["alert"]),
+                      ("ok", t["ok"]), ("text", t["text"])):
+        for n in range(0, 101, 5):
+            s = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
+            c = cairo.Context(s)
+            c.set_source_rgba(*cairo_rgb(t["text"], 0.16))
+            c.set_line_width(4.2)
+            c.set_line_cap(cairo.LINE_CAP_ROUND)
+            st = -math.pi / 2 - math.radians(6)
+            c.arc(size / 2, size / 2, 13, st, st + 2 * math.pi * 0.94)
+            c.stroke()
+            enso(c, size / 2, size / 2, 13, n / 100, cairo_rgb(col), 4.2, inner=False)
+            s.write_to_png(str(out / f"{kind}-{n}.png"))
+
+
+def render_lock_enso(t):
+    import cairo
+    size = 640
+    s = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
+    c = cairo.Context(s)
+    cx = cy = size / 2
+    col = cairo_rgb(t["text"], 0.9)
+    c.set_line_cap(cairo.LINE_CAP_ROUND)
+    # brush: a few overlapping strokes of falling width give the dry-brush tail
+    for i, (w, a0, a1, alpha) in enumerate(((18, -1.9, 4.05, 0.92), (10, -1.85, 4.25, 0.55), (4, -1.7, 4.4, 0.35))):
+        c.set_source_rgba(col[0], col[1], col[2], alpha)
+        c.set_line_width(w)
+        c.arc(cx, cy, 272 - i * 7, a0, a1)
+        c.stroke()
+    c.set_source_rgba(*cairo_rgb(t["text"], 0.3))
+    c.set_line_width(3)
+    c.arc(cx, cy, 252, -1.2, 3.0)
+    c.stroke()
+    CACHE.mkdir(parents=True, exist_ok=True)
+    s.write_to_png(str(CACHE / "lock-enso.png"))
+    # the seal (錠) is drawn by hyprlock as a label on an accent shape
+
+
+def monitor_size():
+    try:
+        mons = json.loads(subprocess.run(["hyprctl", "monitors", "-j"], capture_output=True, text=True).stdout)
+        m = max(mons, key=lambda m: m["width"] * m["height"])
+        return m["width"], m["height"]
+    except Exception:
+        return 2560, 1440
+
+
+def render_wallpaper(name):
+    import cairo
+    p = PALETTES[name]
+    w, h = monitor_size()
+    s = cairo.ImageSurface(cairo.FORMAT_RGB24, w, h)
+    c = cairo.Context(s)
+    g = cairo.LinearGradient(0, 0, 0, h)
+    g.add_color_stop_rgba(0, *cairo_rgb(p["sky"][0]))
+    g.add_color_stop_rgba(1, *cairo_rgb(p["sky"][1]))
+    c.set_source(g)
+    c.paint()
+    # sun / moon
+    c.set_source_rgba(*cairo_rgb(p["accent"], 0.9))
+    c.arc(w * 0.727, h * 0.333, w * 0.0656, 0, 2 * math.pi)
+    c.fill()
+    sx, sy = w / 1280, h / 720
+    ridges = [
+        [(0, 470), (120, 400), (210, 440), (330, 350), (450, 430), (560, 380), (700, 450), (820, 390), (960, 455), (1100, 400), (1280, 450)],
+        [(0, 560), (160, 500), (300, 545), (420, 490), (600, 560), (760, 515), (900, 565), (1060, 520), (1280, 570)],
+        [(0, 640), (220, 600), (380, 630), (560, 595), (760, 640), (980, 605), (1280, 645)],
+    ]
+    for i, (ridge, col) in enumerate(zip(ridges, p["hills"])):
+        c.move_to(0, h)
+        for x, y in ridge:
+            c.line_to(x * sx, y * sy)
+        c.line_to(w, h)
+        c.close_path()
+        c.set_source_rgba(*cairo_rgb(col))
+        c.fill()
+        if i == 0:  # mist between the first and second ridge
+            m = cairo.LinearGradient(0, 420 * sy, 0, 540 * sy)
+            m.add_color_stop_rgba(0, *cairo_rgb(p["sky"][1], 0))
+            m.add_color_stop_rgba(1, *cairo_rgb(p["sky"][1], 0.85))
+            c.set_source(m)
+            c.rectangle(0, 420 * sy, w, 120 * sy)
+            c.fill()
+    WALLS.mkdir(parents=True, exist_ok=True)
+    out = WALLS / f"shoji-{name}.png"
+    s.write_to_png(str(out))
+    return out
+
+
+def set_wallpaper(path=None):
+    """Show a wallpaper with whatever is installed: awww, then hyprpaper, then swaybg.
+
+    No path: the last one shoji set (Hyprland autostart)."""
+    import shutil
+    last = STATE.parent / "shoji-wallpaper"
+    if path is None:
+        try:
+            path = Path(last.read_text().strip())
+        except OSError:
+            path = WALLS / f"shoji-{current()}.png"
+    path = Path(path).expanduser()
+    if not path.exists():
+        return
+    write(last, str(path) + "\n")
+    hypr_wall = HOME / ".local/bin/hypr-wall"
+    awww = shutil.which("awww") or (HOME / ".cargo/bin/awww").exists() and str(HOME / ".cargo/bin/awww")
+    if hypr_wall.exists() and awww:
+        run(str(hypr_wall), "set", str(path))
+    elif awww:
+        daemon = awww + "-daemon"
+        if subprocess.run(["pgrep", "-x", "awww-daemon"], stdout=subprocess.DEVNULL).returncode:
+            subprocess.Popen([daemon], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            import time
+            time.sleep(0.5)
+        run(awww, "img", str(path), "--transition-type", "grow")
+    elif shutil.which("hyprpaper"):
+        ver = subprocess.run(["hyprpaper", "--version"], capture_output=True, text=True).stdout
+        nums = [int(x) for x in __import__("re").findall(r"(\d+)\.(\d+)", ver)[0]] if "." in ver else [0, 8]
+        if nums >= [0, 8]:  # 0.8 switched to block syntax
+            conf = f"wallpaper {{\n    monitor =\n    path = {path}\n    fit_mode = cover\n}}\n"
+        else:
+            conf = f"preload = {path}\nwallpaper = , {path}\n"
+        write(CFG / "hypr/hyprpaper.conf", f"# Generated by shoji\n{conf}splash = false\n")
+        run("pkill", "-x", "hyprpaper")
+        subprocess.Popen(["hyprpaper"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    elif shutil.which("swaybg"):
+        run("pkill", "-x", "swaybg")
+        subprocess.Popen(["swaybg", "-m", "fill", "-i", str(path)], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+# ---------- commands ----------
+def reload_apps():
+    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        run("hyprctl", "reload")
+    run("pkill", "-SIGUSR2", "-x", "waybar")
+    if subprocess.run(["pgrep", "-x", "swaync"], stdout=subprocess.DEVNULL).returncode == 0:
+        run("swaync-client", "-rs", "-sw")
+    run("pkill", "-SIGUSR2", "-x", "ghostty")
+    run("pkill", "-RTMIN+10", "-x", "waybar")  # ensō volume image
+
+
+def current():
+    for f in (STATE,):
+        try:
+            name = f.read_text().strip()
+            if name in PALETTES:
+                return name
+        except OSError:
+            pass
+    return DEFAULT
+
+
+def kanji_num(n):
+    if n <= 10:
+        return KNUM[n]
+    tens, ones = divmod(n, 10)
+    return (KNUM[tens] if tens > 1 else "") + "十" + (KNUM[ones] if ones else "")
+
+
+def cmd_doctor(name):
+    t = tokens(name)
+    print(f"{PALETTES[name]['name']} on {t['base']}")
+    for k in ("text", "muted", "accent", "ok", "alert", "warn", "info"):
+        cr = contrast(t[k], t["base"])
+        print(f"  {k:<7} {t[k]}  {cr:5.2f}  {'pass' if cr >= 4.5 else 'FAIL'}")
+    cr = contrast(t["on_accent"], t["accent"])
+    print(f"  on_accent on accent {cr:5.2f}  {'pass' if cr >= 4.5 else 'FAIL'}")
+    fonts = subprocess.run(["fc-list", ":", "family"], capture_output=True, text=True).stdout
+    for f in ("Shippori Mincho", "Zen Kaku Gothic New", "lucide", "JetBrainsMono Nerd Font"):
+        print(f"  font    {f:<24} {'ok' if f in fonts else 'MISSING'}")
+
+
+def main():
+    args = sys.argv[1:] or ["status"]
+    cmd = args[0]
+    if cmd == "status":
+        print(current())
+    elif cmd == "list":
+        cur = current()
+        for k, p in PALETTES.items():
+            print(f"{'●' if k == cur else ' '} {k:<9} {p['kanji']:<3} {p['note']} ({'dark' if p['dark'] else 'light'})")
+    elif cmd == "doctor":
+        cmd_doctor(args[1] if len(args) > 1 else current())
+    elif cmd == "gnome":
+        gnome_reset()
+    elif cmd == "wallpaper":
+        set_wallpaper(args[1] if len(args) > 1 else None)
+    elif cmd == "date-kanji":
+        d = datetime.date.today()
+        print(f"{kanji_num(d.month)}月{kanji_num(d.day)}日 · {WEEK_K[d.weekday()]}曜日")
+    elif cmd == "weekday-kanji":
+        print(WEEK_K[datetime.date.today().weekday()])
+    elif cmd in ("apply", "toggle"):
+        quiet = cmd == "apply" and len(args) == 1
+        name = current() if quiet else (PALETTES[current()]["pair"] if cmd == "toggle" else args[1])
+        if name not in PALETTES:
+            sys.exit(f"unknown palette: {name} (shoji list)")
+        wall = generate(name)
+        reload_apps()
+        if not quiet:
+            set_wallpaper(wall)
+            run("notify-send", "-a", "Shoji", f"{PALETTES[name]['kanji']} {PALETTES[name]['name']}", PALETTES[name]["note"])
+            print(name)
+    else:
+        sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

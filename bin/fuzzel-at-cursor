@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Run fuzzel as a dropdown right under the mouse (for waybar clicks).
+
+Same arguments as fuzzel. Reads --width (characters, default 44 like fuzzel.ini),
+centers the menu on the cursor's x and clamps it inside the monitor. The top
+anchor already sits below the bar's exclusive zone, so only a small gap is added.
+
+Clicking the same bar icon again closes the menu (like GNOME popovers); clicking a
+different icon swaps menus. Under Hyprland the click outside fuzzel can close it
+before this script runs, so a menu with the same args that closed within
+REOPEN_GUARD seconds counts as "just closed by this click" and is not reopened.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+STATE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "fuzzel-at-cursor"
+CHAR_PX, FRAME_PX = 10, 34  # measured: window px = 10 * width + 34 (font size 11)
+GAP = 6
+REOPEN_GUARD = 0.6
+
+
+def hypr(*args):
+    return json.loads(subprocess.run(["hyprctl", *args, "-j"], capture_output=True, text=True).stdout)
+
+
+def width_chars(args):
+    for i, a in enumerate(args):
+        if a.startswith("--width="):
+            return int(a.split("=", 1)[1])
+        if a in ("--width", "-w") and i + 1 < len(args):
+            return int(args[i + 1])
+    return 44
+
+
+def read_state():
+    """(status, pid_or_time, key) where status is 'open' or 'closed'."""
+    try:
+        status, value, key = STATE.read_text().split("\n", 2)
+        return status, value, key
+    except (OSError, ValueError):
+        return "", "", ""
+
+
+def same_menu_toggled(key):
+    status, value, last_key = read_state()
+    pids = subprocess.run(["pgrep", "-x", "fuzzel"], capture_output=True, text=True).stdout.split()
+    if pids:
+        subprocess.run(["pkill", "-x", "fuzzel"])
+        return status == "open" and value in pids and last_key == key
+    return status == "closed" and last_key == key and time.time() - float(value or 0) < REOPEN_GUARD
+
+
+args = sys.argv[1:]
+key = "\0".join(args)
+if same_menu_toggled(key):
+    sys.exit(0)
+
+cur = hypr("cursorpos")
+mon = next(m for m in hypr("monitors") if m["focused"])
+menu_px = CHAR_PX * width_chars(args) + FRAME_PX
+x = cur["x"] - mon["x"] - menu_px // 2
+x = max(12, min(x, mon["width"] - menu_px - 12))
+
+proc = subprocess.Popen(["fuzzel", "--anchor=top-left", f"--x-margin={x}", f"--y-margin={GAP}", *args])
+STATE.write_text(f"open\n{proc.pid}\n{key}")
+rc = proc.wait()
+STATE.write_text(f"closed\n{time.time()}\n{key}")
+sys.exit(rc)

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Keep the screen awake (no lock / dpms) until toggled off. `status` prints waybar JSON.
+# Holds a systemd idle inhibitor, which hypridle honors. Never touches suspend.
+WHO=keep-awake
+
+running() { pgrep -f "systemd-inhibit --what=idle --who=$WHO" >/dev/null; }
+
+case "${1:-toggle}" in
+  status)
+    if running; then
+      echo '{"text":"","class":"on","tooltip":"Keep awake: on — screen will not lock or turn off\nClick to turn off"}'
+    else
+      echo '{"text":"","class":"off","tooltip":"Keep awake: off — locks after 10 min idle\nClick to keep the screen on"}'
+    fi
+    ;;
+  toggle)
+    if running; then
+      pkill -f "systemd-inhibit --what=idle --who=$WHO"
+      notify-send -a "Keep awake" -u low "Keep awake off" "Screen locks after 10 min idle"
+    else
+      setsid -f systemd-inhibit --what=idle --who=$WHO --why="Keep awake toggle" sleep infinity >/dev/null 2>&1
+      notify-send -a "Keep awake" -u low "Keep awake on" "Screen stays on until you turn this off"
+    fi
+    pkill -RTMIN+12 waybar
+    ;;
+esac

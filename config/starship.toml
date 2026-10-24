@@ -1,0 +1,48 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# Shoji prompt: just ❯ on the left, context muted on the right.
+# The old Catppuccin powerline prompt is in starship.toml.bak-catppuccin-20261024.
+add_newline = false
+format = "$character"
+right_format = "$cmd_duration$directory$git_branch$git_status"
+palette = "shoji"
+
+[palettes.shoji]
+text = "#e6e9f0"
+muted = "#97a0b5"
+accent = "#d9b05a"
+alert = "#e0707a"
+
+[character]
+success_symbol = "[❯](accent)"
+error_symbol = "[❯](alert)"
+vimcmd_symbol = "[❮](accent)"
+
+[directory]
+style = "muted"
+format = "[$path]($style)"
+truncation_length = 3
+truncation_symbol = "…/"
+
+[git_branch]
+style = "muted"
+format = "[ · $branch]($style)"
+
+[git_status]
+style = "alert"
+format = "[$all_status$ahead_behind]($style)"
+ahead = " ↑${count}"
+behind = " ↓${count}"
+diverged = " ↕"
+modified = " ●"
+staged = " +"
+untracked = " ?"
+deleted = " −"
+renamed = ""
+stashed = ""
+conflicted = " !"
+
+[cmd_duration]
+min_time = 3000
+style = "muted"
+format = "[$duration · ]($style)"

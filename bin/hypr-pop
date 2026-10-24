@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Open (or close, if already open) a Shoji popover drawn by hypr-widgets.
+# Usage: hypr-pop audio|network|theme|launcher
+# Falls back to the old tools when hypr-widgets is not running.
+fifo=${XDG_RUNTIME_DIR:-/tmp}/hypr-osd.fifo
+pid=$(cat "${XDG_RUNTIME_DIR:-/tmp}/hypr-widgets.pid" 2>/dev/null)
+if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ -p "$fifo" ]; then
+  printf 'pop\t%s\n' "$1" > "$fifo"
+  exit 0
+fi
+case "$1" in
+  audio)   exec ~/.local/bin/audio-switch menu ;;
+  network) exec ~/.local/bin/hypr-toggle-app nm-connection-editor nm-connection-editor ;;
+  theme)   exec ~/.local/bin/shoji toggle ;;
+  launcher) exec fuzzel ;;
+esac
