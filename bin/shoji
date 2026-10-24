@@ -22,6 +22,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HOME = Path.home()
@@ -655,6 +656,59 @@ def reload_apps():
         run("swaync-client", "-rs", "-sw")
     run("pkill", "-SIGUSR2", "-x", "ghostty")
     run("pkill", "-RTMIN+10", "-x", "waybar")  # ensō volume image
+    restart_thunar()
+
+
+def thunar_folder(name):
+    """A Thunar window title names only the folder: find the one it most likely is."""
+    if name.startswith("/"):
+        return Path(name)  # misc-window-title-style = full path
+    if name == HOME.name:
+        return HOME
+    found = []
+    for root, dirs, _ in os.walk(HOME):
+        depth = len(Path(root).relative_to(HOME).parts)
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"] if depth < 3 else []
+        found += [Path(root) / d for d in dirs if d == name]
+        if len(found) > 1:
+            break
+    return found[0] if len(found) == 1 else HOME
+
+
+def restart_thunar():
+    """GTK3 reads gtk.css once, so a running Thunar is restarted to pick up the palette. Its windows
+    come back on the same folders and workspaces. Never while a dialog (copy progress, rename …) is open."""
+    if subprocess.run(["pgrep", "-x", "thunar"], stdout=subprocess.DEVNULL).returncode != 0:
+        return
+    try:
+        out = subprocess.run(["hyprctl", "clients", "-j"], capture_output=True, text=True, timeout=3).stdout
+        wins = [c for c in json.loads(out or "[]") if c.get("class", "").lower() == "thunar"]
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return
+    if any(not c.get("title", "").endswith(" - Thunar") for c in wins):
+        return
+    run("thunar", "-q")
+    for _ in range(30):
+        if subprocess.run(["pgrep", "-x", "thunar"], stdout=subprocess.DEVNULL).returncode != 0:
+            break
+        time.sleep(0.1)
+    else:
+        return
+    quiet = dict(stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    subprocess.Popen(["thunar", "--daemon"], **quiet)
+    rules = []
+    for i, c in enumerate(wins):
+        ws = c["workspace"]["name"] if c["workspace"]["id"] < 0 else str(c["workspace"]["id"])
+        title = re.escape(c["title"]).replace("\\", "\\\\")
+        name = f"shoji-thunar-{i}"
+        run("hyprctl", "eval", f'hl.window_rule({{ name = "{name}", match = {{ class = "^[Tt]hunar$", '
+                               f'title = "^{title}$" }}, workspace = "{ws} silent", no_initial_focus = true }})')
+        rules.append(name)
+        subprocess.Popen(["thunar", str(thunar_folder(c["title"][:-len(" - Thunar")]))], **quiet)
+    if rules:  # the rules only place these windows; afterwards they must not catch new ones
+        undo = "; ".join(f"hyprctl eval 'hl.window_rule({{ name = \"{n}\", match = {{ class = \"^shoji-never$\" }} }})'"
+                         for n in rules)
+        subprocess.Popen(["sh", "-c", f"sleep 3; {undo}"], **quiet)
 
 
 def current():
