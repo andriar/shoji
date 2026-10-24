@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-10-24
+
+- Lock screen background comes from `~/.cache/shoji/lock.png`, written by `shoji` (and hypr-wall),
+  so a clean install no longer shows a black lock screen.
+- Softer mist band in the wallpaper (no visible edge on light palettes).
+- README: screenshots and step-by-step install for Ubuntu/Debian and Arch.
+
 ## 0.1.1 — 2026-10-24
 
 - Light palettes (Hiru, Yuki): the terminal's bright row now goes darker, so all 16 colors pass 4.5:1

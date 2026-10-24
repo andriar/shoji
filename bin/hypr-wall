@@ -68,7 +68,11 @@ def lock_copy(path):
     from PIL import Image
     THUMBS.mkdir(parents=True, exist_ok=True)
     with Image.open(path) as im:
-        im.convert("RGB").save(out)
+        rgb = im.convert("RGB")
+        rgb.save(out)
+        shoji_lock = Path.home() / ".cache/shoji/lock.png"  # Shoji's hyprlock.conf reads this one
+        shoji_lock.parent.mkdir(parents=True, exist_ok=True)
+        rgb.save(shoji_lock)
     stamp.write_text(f"{path}:{path.stat().st_mtime}")
 
 

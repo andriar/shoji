@@ -251,6 +251,9 @@ def generate(name):
     render_enso_levels(t)
     render_lock_enso(t)
     wall = render_wallpaper(name)
+    if not (CACHE / "lock.png").exists():
+        import shutil as _sh
+        _sh.copyfile(wall, CACHE / "lock.png")
     write(STATE, name + "\n")
     return wall
 
@@ -487,7 +490,8 @@ def render_wallpaper(name):
         if i == 0:  # mist between the first and second ridge
             m = cairo.LinearGradient(0, 420 * sy, 0, 540 * sy)
             m.add_color_stop_rgba(0, *cairo_rgb(p["sky"][1], 0))
-            m.add_color_stop_rgba(1, *cairo_rgb(p["sky"][1], 0.85))
+            m.add_color_stop_rgba(0.55, *cairo_rgb(p["sky"][1], 0.7))
+            m.add_color_stop_rgba(1, *cairo_rgb(p["sky"][1], 0))
             c.set_source(m)
             c.rectangle(0, 420 * sy, w, 120 * sy)
             c.fill()
@@ -512,6 +516,9 @@ def set_wallpaper(path=None):
     if not path.exists():
         return
     write(last, str(path) + "\n")
+    import shutil as _sh
+    CACHE.mkdir(parents=True, exist_ok=True)
+    _sh.copyfile(path, CACHE / "lock.png")  # hyprlock background
     hypr_wall = HOME / ".local/bin/hypr-wall"
     awww = shutil.which("awww") or (HOME / ".cargo/bin/awww").exists() and str(HOME / ".cargo/bin/awww")
     if hypr_wall.exists() and awww:
