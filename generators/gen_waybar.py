@@ -90,10 +90,12 @@ cfg = {
         "on-click": f"{BIN}/hypr-pop audio", "on-click-middle": f"{BIN}/hypr-osd mute",
         "on-scroll-up": f"{BIN}/hypr-osd up", "on-scroll-down": f"{BIN}/hypr-osd down",
     },
-    "image#bat": {"exec": f"{BIN}/shoji-level bat", "interval": 30, "size": 16, "tooltip": False},
+    "image#bat": {"exec": f"{BIN}/shoji-level bat", "interval": 30, "size": 16, "tooltip": False,
+                  "on-click": f"{BIN}/hypr-pop battery"},
     "battery": {
         "states": {"low": 20, "critical": 10}, "format": "{capacity}%",
-        "tooltip-format": "{timeTo}\nPower mode: powerprofilesctl",
+        "tooltip-format": "{timeTo}\nClick: battery and power mode",
+        "on-click": f"{BIN}/hypr-pop battery",
     },
     # app tray icons stay tucked away: hover the dots to slide them out
     "group/tray": {"orientation": "inherit", "modules": ["custom/traydots", "tray"],

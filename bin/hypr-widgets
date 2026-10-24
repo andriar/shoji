@@ -273,7 +273,7 @@ class Osd:
         w, h = layout.get_pixel_size()
         cr.move_to(c - w / 2, c - h / 2 - 6)
         PangoCairo.show_layout(cr, layout)
-        sub = {"vol": "音量 · VOL", "mic": "マイク · MIC"}[self.kind]
+        sub = {"vol": "音量 · VOL", "mic": "マイク · MIC", "bri": "明 · BRIGHT"}[self.kind]
         if self.muted:
             sub = "MUTED"
         layout2 = self.area.create_pango_layout("")
@@ -285,7 +285,8 @@ class Osd:
         return False
 
     def show(self, title, pct, muted):
-        self.kind = "mic" if title.lower().startswith("micro") else "vol"
+        low = title.lower()
+        self.kind = "mic" if low.startswith("micro") else "bri" if low.startswith("bright") else "vol"
         self.pct, self.muted = max(0, min(100, pct)), muted
         self.area.queue_draw()
         self.win.show()
@@ -713,6 +714,87 @@ class ThemeManager(Popover):
         self.show()
 
 
+class Battery(Popover):
+    """Battery + power mode (power-profiles-daemon). Also useful on a desktop for the power mode."""
+    name = "battery"
+    width = 300
+    MODES = (("power-saver", "Saver", "Lower performance, longer battery. The screen dims sooner."),
+             ("balanced", "Balanced", "Full speed when needed, quiet when idle."),
+             ("performance", "Performance", "Fans may spin up. Best on power."))
+
+    def battery(self):
+        bats = sorted(Path("/sys/class/power_supply").glob("BAT*"))
+        if not bats:
+            return None
+        b = bats[0]
+        cap = int((b / "capacity").read_text().strip())
+        status = (b / "status").read_text().strip()
+        info = sh("upower", "-i", sh("upower", "-e").split("\n")[0]) if sh("which", "upower") else ""
+        when = ""
+        for line in info.splitlines():
+            if "time to empty" in line or "time to full" in line:
+                when = line.split(":", 1)[1].strip()
+        return cap, status, when
+
+    def build(self):
+        t = theme()["tokens"]
+        bat = self.battery()
+        top = Gtk.Box(spacing=14)
+        ring = Gtk.DrawingArea()
+        ring.set_size_request(64, 64)
+        cap = bat[0] if bat else 0
+        charging = bool(bat) and bat[1] in ("Charging", "Full")
+        low = bool(bat) and not charging and cap <= 20
+        col = rgba(t["ok"] if charging else t["alert"] if low else t["text"])
+
+        def draw(_w, cr):
+            enso(cr, 32, 32, 25, cap / 100, col, 5, track=rgba(t["text"], 0.12))
+            lay = ring.create_pango_layout("")
+            lay.set_markup(f'<span font_family="Shippori Mincho" weight="bold" size="13pt" foreground="{t["text"]}">'
+                           f'{cap if bat else "–"}</span>', -1)
+            w, h = lay.get_pixel_size()
+            cr.move_to(32 - w / 2, 32 - h / 2)
+            PangoCairo.show_layout(cr, lay)
+            return False
+        ring.connect("draw", draw)
+        top.pack_start(ring, False, False, 0)
+        words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        words.set_valign(Gtk.Align.CENTER)
+        if bat:
+            head = ("Fully charged" if bat[1] == "Full" else "Charging") if charging else \
+                   ("Battery low" if low else "On battery")
+            detail = (f"{'Full' if charging else 'Empty'} in about {bat[2]}" if bat[2] else bat[1].lower())
+        else:
+            head, detail = "No battery", "Desktop on mains power"
+        words.pack_start(label(head, "title"), False, False, 0)
+        words.pack_start(label(detail, "muted"), False, False, 0)
+        top.pack_start(words, True, True, 0)
+        self.box.pack_start(top, False, False, 2)
+
+        current = sh("powerprofilesctl", "get")
+        if current:
+            self.box.pack_start(label("POWER MODE", "label-small"), False, False, 4)
+            seg = Gtk.Box(spacing=4, homogeneous=True)
+            for mode, name, _hint in self.MODES:
+                b = Gtk.Button(label=name)
+                b.get_style_context().add_class("chip")
+                if mode == current:
+                    b.get_style_context().add_class("on")
+                b.connect("clicked", lambda _b, m=mode: (sh("powerprofilesctl", "set", m), self.refresh()))
+                seg.pack_start(b, True, True, 0)
+            self.box.pack_start(seg, False, False, 0)
+            hint = next((h for m, _n, h in self.MODES if m == current), "")
+            hl = label(hint, "muted")
+            hl.set_line_wrap(True)
+            self.box.pack_start(hl, False, False, 2)
+        self.footer("Power settings…", ["gnome-control-center", "power"])
+
+    def refresh(self):
+        self.clear()
+        self.build()
+        self.box.show_all()
+
+
 class Launcher(Popover):
     """探 Search apps: frequent apps first, typed text matches name, generic name, keywords."""
     name = "launcher"
@@ -888,7 +970,7 @@ class Launcher(Popover):
 class Popovers:
     def __init__(self):
         self.backdrop = Backdrop(self.close)
-        self.items = {cls.name: cls(self) for cls in (Sound, Network)}
+        self.items = {cls.name: cls(self) for cls in (Sound, Network, Battery)}
         self.items["theme"] = ThemeManager(self)
         self.items["launcher"] = Launcher(self)
         self.open = None

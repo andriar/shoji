@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 — 2026-10-24
+
+- Light palettes (Hiru, Yuki): the terminal's bright row now goes darker, so all 16 colors pass 4.5:1
+  (seven were 2.5–4.4:1). `shoji doctor` checks the terminal colors too.
+- Follow the sun switches only at 06:00 and 18:00, so a palette picked by hand is no longer
+  overwritten a few minutes later.
+- Brightness keys (`hypr-osd bright-up|bright-down`, needs brightnessctl) show the ensō as 明 · BRIGHT.
+- Battery popover (`hypr-pop battery`): ensō level, time left, power mode via power-profiles-daemon.
+
 ## 0.1.0 — 2026-10-24
 
 First public draft.

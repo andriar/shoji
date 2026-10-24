@@ -114,6 +114,19 @@ def tokens(name):
     return t
 
 
+def ansi_colors(name):
+    """Terminal 16 colors. Every one but color 0 (a background on dark grounds) is >= 4.5:1."""
+    p, t = PALETTES[name], tokens(name)
+    a = DARK_ANSI if p["dark"] else LIGHT_ANSI
+    if p["dark"]:
+        return ([mix(t["base"], t["text"], 0.08)] + a[:6] + [mix(t["base"], t["text"], 0.78), t["muted"]]
+                + a[6:] + [t["text"]])
+    # light ground: "black" is the ink, "white" a readable grey, and the bright row goes darker
+    # (not lighter) so every color stays readable on paper
+    return ([mix(t["text"], t["base"], 0.10)] + a[:6] + [mix(t["base"], t["text"], 0.70), t["muted"]]
+            + [mix(c, "#000000", 0.22) for c in a[:6]] + [t["text"]])
+
+
 # ---------- generators ----------
 def write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -171,9 +184,7 @@ def generate(name):
           f"selection-match={bare['accent']}ff\ncounter={bare['muted']}ff\nborder={bare['surface2']}ff\n")
 
     # Ghostty: full 16-color palette
-    a = DARK_ANSI if p["dark"] else LIGHT_ANSI
-    ansi = [mix(t["base"], t["text"], 0.08)] + a[:6] + [mix(t["base"], t["text"], 0.78),
-            mix(t["base"], t["text"], 0.42)] + a[6:] + [t["text"]]
+    ansi = ansi_colors(name)
     write(CFG / "ghostty/theme-local", f"# {header}\n"
           f"background = {t['base']}\nforeground = {t['text']}\n"
           f"cursor-color = {t['text']}\ncursor-text = {t['base']}\n"
@@ -563,6 +574,8 @@ def cmd_doctor(name):
     for k in ("text", "muted", "accent", "ok", "alert", "warn", "info"):
         cr = contrast(t[k], t["base"])
         print(f"  {k:<7} {t[k]}  {cr:5.2f}  {'pass' if cr >= 4.5 else 'FAIL'}")
+    low = [f"{i}" for i, c in enumerate(ansi_colors(name)) if i and contrast(c, t["base"]) < 4.5]
+    print(f"  terminal 16 colors  {'pass' if not low else 'FAIL ' + ','.join(low)}")
     cr = contrast(t["on_accent"], t["accent"])
     print(f"  on_accent on accent {cr:5.2f}  {'pass' if cr >= 4.5 else 'FAIL'}")
     fonts = subprocess.run(["fc-list", ":", "family"], capture_output=True, text=True).stdout

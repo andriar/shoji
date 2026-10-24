@@ -1,22 +1,30 @@
 #!/usr/bin/env bash
 # Volume / mic keys with an on-screen popup (drawn by hypr-widgets, swaync as fallback).
-# Usage: hypr-osd up|down|mute|micmute
+# Usage: hypr-osd up|down|mute|micmute|bright-up|bright-down
 case "$1" in
   up)      wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+ ;;
   down)    wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
   mute)    wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
   micmute) wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle ;;
-  *) echo "usage: hypr-osd up|down|mute|micmute" >&2; exit 1 ;;
+  bright-up|bright-down)
+    command -v brightnessctl >/dev/null || exit 0   # laptops: install brightnessctl
+    if [ "$1" = bright-up ]; then brightnessctl -q set 5%+; else brightnessctl -q -n2 set 5%-; fi ;;
+  *) echo "usage: hypr-osd up|down|mute|micmute|bright-up|bright-down" >&2; exit 1 ;;
 esac
 
-if [ "$1" = micmute ]; then
-  dev=@DEFAULT_AUDIO_SOURCE@; name=Microphone; on="󰍬"; off="󰍭"
+if [ "${1#bright-}" != "$1" ]; then
+  pct=$(brightnessctl -m info | cut -d, -f4 | tr -d %)
+  icon=""; title=Brightness; m=0
 else
-  dev=@DEFAULT_AUDIO_SINK@; name=Volume; on="󰕾"; off="󰝟"
+  if [ "$1" = micmute ]; then
+    dev=@DEFAULT_AUDIO_SOURCE@; name=Microphone; on="󰍬"; off="󰍭"
+  else
+    dev=@DEFAULT_AUDIO_SINK@; name=Volume; on="󰕾"; off="󰝟"
+  fi
+  read -r _ vol muted < <(wpctl get-volume "$dev")
+  pct=$(awk -v v="$vol" 'BEGIN { printf "%d", v * 100 + 0.5 }')
+  if [ -n "$muted" ]; then icon=$off; title="$name muted"; m=1; else icon=$on; title=$name; m=0; fi
 fi
-read -r _ vol muted < <(wpctl get-volume "$dev")
-pct=$(awk -v v="$vol" 'BEGIN { printf "%d", v * 100 + 0.5 }')
-if [ -n "$muted" ]; then icon=$off; title="$name muted"; m=1; else icon=$on; title=$name; m=0; fi
 
 # hypr-widgets draws the popup (shown even with Do Not Disturb on); swaync is the fallback
 fifo=${XDG_RUNTIME_DIR:-/tmp}/hypr-osd.fifo

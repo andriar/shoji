@@ -37,6 +37,9 @@ hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("~/.local/bin/hypr-osd up"),   {
 hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("~/.local/bin/hypr-osd down"), { locked = true, repeating = true })
 hl.bind("XF86AudioMute",        hl.dsp.exec_cmd("~/.local/bin/hypr-osd mute"), { locked = true })
 hl.bind("XF86AudioMicMute",     hl.dsp.exec_cmd("~/.local/bin/hypr-osd micmute"), { locked = true })
+-- laptops (needs brightnessctl): the same ensō shows 明 · BRIGHT
+hl.bind("XF86MonBrightnessUp",   hl.dsp.exec_cmd("~/.local/bin/hypr-osd bright-up"),   { locked = true, repeating = true })
+hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("~/.local/bin/hypr-osd bright-down"), { locked = true, repeating = true })
 ```
 
 Check the exact `hl.config` / `hl.bind` shape against `/usr/share/hypr/hyprland.lua` for your version,
@@ -69,6 +72,8 @@ bindel = , XF86AudioRaiseVolume, exec, ~/.local/bin/hypr-osd up
 bindel = , XF86AudioLowerVolume, exec, ~/.local/bin/hypr-osd down
 bindl  = , XF86AudioMute, exec, ~/.local/bin/hypr-osd mute
 bindl  = , XF86AudioMicMute, exec, ~/.local/bin/hypr-osd micmute
+bindel = , XF86MonBrightnessUp, exec, ~/.local/bin/hypr-osd bright-up
+bindel = , XF86MonBrightnessDown, exec, ~/.local/bin/hypr-osd bright-down
 ```
 
 ## GNOME on the same machine

@@ -20,7 +20,8 @@ panels, launcher, lock screen, terminal, GTK/Qt apps and the wallpaper.
 
 Needs Hyprland, waybar, swaync, fuzzel, hyprlock, PipeWire (`wpctl`, `pactl`), NetworkManager (`nmcli`),
 Python 3 with `python3-cairo` and `gir1.2-gtklayershell-0.1`, and one wallpaper tool (awww, hyprpaper or swaybg).
-Recommended: Papirus icons (app icons; Shoji draws its own folders). Optional: ghostty, starship, btop, qt6ct.
+Recommended: Papirus icons (app icons; Shoji draws its own folders). Optional: ghostty, starship, btop, qt6ct,
+brightnessctl and power-profiles-daemon (laptops: brightness ensō, battery popover with power mode).
 
 Tested on Ubuntu 24.04 (Zorin OS 18) with Hyprland 0.56.2, waybar 0.14, swaync 0.9, hyprlock 0.9.6 —
 including a clean-home install inside a nested Hyprland. Not yet tested: Arch / newer swaync (its GTK4
