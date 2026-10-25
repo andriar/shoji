@@ -1084,7 +1084,7 @@ class Keys(Launcher):
              "XF86AudioPrev": "Prev", "left": "←", "right": "→", "up": "↑", "down": "↓"}
     # rows that differ only by one key collapse into one line (keys, description)
     FOLD = {"Go to workspace": "1 … 0", "Move window to workspace": "1 … 0",
-            "Focus window": "← ↑ → ↓", "Move window": "← ↑ → ↓"}
+            "Focus window": "← ↑ → ↓", "Move / swap window": "← ↑ → ↓", "Move window": "← ↑ → ↓"}
 
     def __init__(self, manager):
         super().__init__(manager)
