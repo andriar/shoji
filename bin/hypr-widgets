@@ -879,6 +879,19 @@ class Launcher(Popover):
         self.empty = label("", "muted")
         self.rows = []
 
+    def keep(self):
+        """Widgets made once and packed again on every show."""
+        return (self.entry, self.section, self.scroll, self.empty)
+
+    def clear(self):
+        # Lift them out first: destroying the old box would destroy them too, and a destroyed entry
+        # keeps showing typed text but no longer emits "changed" (search) or "activate" (Enter).
+        for w in self.keep():
+            parent = w.get_parent()
+            if parent:
+                parent.remove(w)
+        super().clear()
+
     def counts(self):
         try:
             return json.loads(self.STATE.read_text())
@@ -1080,6 +1093,9 @@ class Keys(Launcher):
         self.listbox.set_header_func(self.head)
         self.sheet = Gtk.Box(spacing=18, homogeneous=True)
         self.info = label("", "mono")
+
+    def keep(self):
+        return super().keep() + (self.sheet, self.info)
 
     def lines(self):
         try:
