@@ -40,6 +40,11 @@ hl.layer_rule({ name = "shoji-pop", match = { namespace = "^hypr-pop$" }, animat
 -- so a slide would move it ~1400 px against the calendar's ~480 px and they would arrive apart
 hl.layer_rule({ name = "shoji-cal", match = { namespace = "^hypr-calendar$" }, animation = "fade" })
 hl.layer_rule({ name = "shoji-panel", match = { namespace = "^swaync-control-center$" }, animation = "fade" })
+-- windows ease out, no spring overshoot (calm, nothing bounces)
+hl.curve("easeOutQuint", { type = "bezier", points = { {0.23, 1}, {0.32, 1} } })
+hl.animation({ leaf = "windows",     enabled = true, speed = 4.8, bezier = "easeOutQuint" })
+hl.animation({ leaf = "windowsIn",   enabled = true, speed = 4.1, bezier = "easeOutQuint", style = "popin 90%" })
+hl.animation({ leaf = "windowsMove", enabled = true, speed = 4.5, bezier = "easeOutQuint" })
 -- toasts slide in through swaync CSS; Hyprland's layer animation stretches the stack when it resizes
 hl.layer_rule({ name = "shoji-toasts", match = { namespace = "^swaync-notification-window$" }, no_anim = true })
 

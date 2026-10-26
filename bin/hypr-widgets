@@ -114,6 +114,11 @@ CSS = b"""
   padding: 14px;
   color: @text;
 }
+/* every state change eases (hover, selection, a toggle turning on) instead of snapping */
+button, .row, .app-row, .key-row, .sheet-row, .chip, .toggle, .day, .agenda-row, .nav, .card, .link {
+  transition: background-color 140ms ease-out, color 140ms ease-out, box-shadow 140ms ease-out,
+              border-color 140ms ease-out;
+}
 .muted { color: @muted; }
 .label-small { color: @muted; font-size: 10.5px; letter-spacing: 1px; }
 .mono { font-family: "JetBrainsMono Nerd Font"; font-size: 11px; color: @muted; }
@@ -265,6 +270,58 @@ def clear_bg(_w, cr):
     cr.paint()
     cr.set_operator(cairo.OPERATOR_OVER)
     return False
+
+
+class Glide:
+    """Eases a scrolled window's vertical position, like Shoji's swaync patch: a wheel notch or a
+    keyboard step moves a target, the view follows in 180 ms (ease-out cubic), and quick notches add
+    up instead of restarting. Touchpads keep GTK's own scrolling, which is already smooth."""
+    STEP, MS = 96, 180
+
+    def __init__(self, scrolled):
+        self.sw, self.adj = scrolled, scrolled.get_vadjustment()
+        self.tick, self.target, self.start, self.origin = 0, 0.0, 0, 0.0
+        scrolled.connect("scroll-event", self.on_scroll)
+
+    def on_scroll(self, _w, ev):
+        dev = ev.get_source_device()
+        if dev is not None and dev.get_source() == Gdk.InputSource.TOUCHPAD:
+            return False
+        if ev.direction == Gdk.ScrollDirection.SMOOTH:
+            dy = ev.get_scroll_deltas()[2]
+        else:
+            dy = {Gdk.ScrollDirection.UP: -1, Gdk.ScrollDirection.DOWN: 1}.get(ev.direction, 0)
+        if not dy:
+            return False
+        self.to((self.target if self.tick else self.adj.get_value()) + dy * self.STEP)
+        return True
+
+    def to(self, value):
+        adj = self.adj
+        self.target = max(adj.get_lower(), min(adj.get_upper() - adj.get_page_size(), value))
+        self.origin = adj.get_value()
+        clock = self.sw.get_frame_clock()
+        if clock is None:
+            adj.set_value(self.target)
+            return
+        self.start = clock.get_frame_time()
+        if not self.tick:
+            self.tick = self.sw.add_tick_callback(self.frame)
+
+    def jump(self, value):
+        if self.tick:
+            self.sw.remove_tick_callback(self.tick)
+            self.tick = 0
+        self.adj.set_value(value)
+
+    def frame(self, _w, clock):
+        t = (clock.get_frame_time() - self.start) / (self.MS * 1000)
+        if t >= 1:
+            self.adj.set_value(self.target)
+            self.tick = 0
+            return False
+        self.adj.set_value(self.origin + (self.target - self.origin) * (1 - (1 - t) ** 3))
+        return True
 
 
 def click_through(win):
@@ -651,8 +708,21 @@ class Calendar:
             b.connect("clicked", lambda _b, s=step: self.shift(s))
             nav.pack_start(b, False, False, 0)
         box.pack_start(nav, False, False, 0)
-        self.grid = Gtk.Grid(column_homogeneous=True, row_spacing=2)
-        box.pack_start(self.grid, False, False, 0)
+        # the weekday row stays; two month pages in a stack below it slide one out and the next in
+        month = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)  # same rhythm as the day rows
+        weekdays = Gtk.Grid(column_homogeneous=True)
+        for i, k in enumerate(WEEK_K):
+            weekdays.attach(label(k, "wk", xalign=0.5), i, 0, 1, 1)
+        month.pack_start(weekdays, False, False, 0)
+        self.grid_pages = [Gtk.Grid(column_homogeneous=True, row_spacing=2) for _ in range(2)]
+        self.grid_stack = Gtk.Stack(transition_duration=220, hhomogeneous=True, vhomogeneous=True)
+        for i, g in enumerate(self.grid_pages):
+            self.grid_stack.add_named(g, f"m{i}")
+        month.pack_start(self.grid_stack, False, False, 0)
+        box.pack_start(month, False, False, 0)
+        self.grid = self.grid_pages[0]
+        self.slide = 0   # -1 / +1 while the next fill() should slide to the previous / next month
+        self.fade = False  # the next fill_agenda() crossfades (a new day was picked)
         self.agenda = Agenda(self.fill_agenda) if ECal else None
         if self.agenda:
             box.get_style_context().add_class("agenda")
@@ -667,9 +737,14 @@ class Calendar:
                 b.connect("clicked", lambda _b: self.open_day())
                 head.pack_start(b, False, False, 0)
             box.pack_start(head, False, False, 0)
-            self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-            self.rows.set_size_request(-1, AGENDA_ROWS * 24)
-            box.pack_start(self.rows, False, False, 0)
+            self.row_pages = [Gtk.Box(orientation=Gtk.Orientation.VERTICAL) for _ in range(2)]
+            self.row_stack = Gtk.Stack(transition_duration=160, vhomogeneous=True,
+                                       transition_type=Gtk.StackTransitionType.CROSSFADE)
+            for i, r in enumerate(self.row_pages):
+                r.set_size_request(-1, AGENDA_ROWS * 24)
+                self.row_stack.add_named(r, f"a{i}")
+            box.pack_start(self.row_stack, False, False, 0)
+            self.rows = self.row_pages[0]
         box.pack_start(sep(), False, False, 0)
         self.toggles = {}
         row = Gtk.Box(spacing=6, homogeneous=True)
@@ -696,6 +771,7 @@ class Calendar:
         self.view = datetime.date(y, m, 1)
         today = datetime.date.today()
         self.selected = today if (today.year, today.month) == (y, m) else self.view
+        self.slide, self.fade = step, True
         self.load()
 
     def weeks(self):
@@ -712,22 +788,24 @@ class Calendar:
         self.fill_agenda()
 
     def pick(self, d):
+        self.fade = d != self.selected
         self.selected = d
         if (d.year, d.month) != (self.view.year, self.view.month):
+            self.slide = 1 if d > self.view else -1
             self.view = d.replace(day=1)
             self.load()
         else:
             self.fill_agenda()
 
     def fill(self):
+        if self.slide:  # build the month on the hidden page, then slide to it
+            self.grid = self.grid_pages[1 - self.grid_pages.index(self.grid)]
         for child in self.grid.get_children():
             self.grid.remove(child)
         today = datetime.date.today()
         marked = self.agenda.days() if self.agenda else set()
         self.month.set_text(self.view.strftime("%B %Y"))
-        for i, k in enumerate(WEEK_K):
-            self.grid.attach(label(k, "wk", xalign=0.5), i, 0, 1, 1)
-        for r, week in enumerate(self.weeks(), start=1):
+        for r, week in enumerate(self.weeks()):
             for col, d in enumerate(week):
                 b = Gtk.Button()
                 b.set_halign(Gtk.Align.CENTER)
@@ -751,6 +829,11 @@ class Calendar:
                 b.connect("clicked", lambda _b, d=d: self.pick(d))
                 self.grid.attach(b, col, r, 1, 1)
         self.grid.show_all()
+        if self.slide:
+            self.grid_stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT if self.slide > 0
+                                                else Gtk.StackTransitionType.SLIDE_RIGHT)
+            self.grid_stack.set_visible_child(self.grid)
+            self.slide = 0
 
     def fill_agenda(self):
         self.fill()
@@ -759,6 +842,9 @@ class Calendar:
         d = self.selected
         near = {0: "today", 1: "tomorrow", -1: "yesterday"}.get((d - datetime.date.today()).days)
         self.sel_label.set_text((near or d.strftime("%a · %-d %b")).upper())
+        fade, self.fade = self.fade, False
+        if fade:  # a new day: write its agenda on the hidden page and crossfade to it
+            self.rows = self.row_pages[1 - self.row_pages.index(self.rows)]
         for child in self.rows.get_children():
             self.rows.remove(child)
         items = self.agenda.day(d)
@@ -792,6 +878,8 @@ class Calendar:
             more.connect("clicked", lambda _b: self.open_day())
             self.rows.pack_start(more, False, False, 0)
         self.rows.show_all()
+        if fade:
+            self.row_stack.set_visible_child(self.rows)
         # a GTK window grows with its content but never shrinks back on its own; the card must keep
         # the swaync panel's height (sources answering one by one briefly made it taller)
         self.win.resize(self.WIDTH, 1)
@@ -1360,6 +1448,7 @@ class Launcher(Popover):
         self.scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.scroll.set_size_request(-1, self.ROWS * 44)
         self.scroll.add(self.listbox)
+        self.glide = Glide(self.scroll)
         self.section = label("", "label-small")
         self.empty = label("", "muted")
         self.rows = []
@@ -1480,7 +1569,7 @@ class Launcher(Popover):
         if visible:
             first = min(visible, key=lambda r: (-r.score, r.app.get_display_name().lower()))
             self.listbox.select_row(first)
-            self.scroll.get_vadjustment().set_value(0)
+            self.glide.jump(0)
 
     def on_key(self, w, ev):
         if ev.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and ev.state & Gdk.ModifierType.SHIFT_MASK:
@@ -1496,10 +1585,11 @@ class Launcher(Popover):
                 self.listbox.select_row(nxt)
                 a = nxt.get_allocation()
                 adj = self.scroll.get_vadjustment()
-                if a.y < adj.get_value():
-                    adj.set_value(a.y)
-                elif a.y + a.height > adj.get_value() + adj.get_page_size():
-                    adj.set_value(a.y + a.height - adj.get_page_size())
+                view = self.glide.target if self.glide.tick else adj.get_value()
+                if a.y < view:
+                    self.glide.to(a.y)
+                elif a.y + a.height > view + adj.get_page_size():
+                    self.glide.to(a.y + a.height - adj.get_page_size())
             return True
         return super().on_key(w, ev)
 
@@ -1744,7 +1834,7 @@ class Keys(Launcher):
         self.empty.set_visible(bool(q and not visible))
         if visible:
             self.listbox.select_row(min(visible, key=lambda r: (-r.score, r.order)))
-            self.scroll.get_vadjustment().set_value(0)
+            self.glide.jump(0)
         if self.sheet.get_parent():
             self.apply_mode()
 
@@ -1866,7 +1956,11 @@ class Media(Popover):
             self.seek = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, length, 1)
             self.seek.set_draw_value(False)
             self.seek.set_value(float(t.get("position") or 0))
-            self.seek.connect("change-value", lambda _s, _scroll, v: (sh("playerctl", "-p", self.player, "position", str(max(0, v))), False)[1])
+            self.seek.connect("change-value", lambda _s, _scroll, v: (sh("playerctl", "-p", self.player, "position", str(max(0, v))),
+                                                                      self.anchor(max(0, v)), False)[-1])
+            # the bar runs on the frame clock between the once-a-second reads (no 1 s steps)
+            self.anchor(float(t.get("position") or 0))
+            self.seek.add_tick_callback(self.glide_seek)
             self.box.pack_start(self.seek, False, False, 4)
             times = Gtk.Box()
             self.pos = label(self.clock(self.seek.get_value()), "mono")
@@ -1875,6 +1969,7 @@ class Media(Popover):
             self.box.pack_start(times, False, False, 0)
         else:
             self.seek = None
+        self.playing = t["status"] == "Playing"
         controls = Gtk.Box(spacing=18, halign=Gtk.Align.CENTER)
         for name, cmd, cls in (("skip-back", "previous", "nav"),
                                ("pause" if t["status"] == "Playing" else "play", "toggle", "play"),
@@ -1883,8 +1978,7 @@ class Media(Popover):
             b.get_style_context().add_class(cls)
             b.get_style_context().add_class("media-btn")
             b.set_valign(Gtk.Align.CENTER)
-            b.connect("clicked", lambda _b, c=cmd: (sh(str(HOME / ".local/bin/shoji-media"), c),
-                                                    GLib.timeout_add(300, self.refresh_open)))
+            b.connect("clicked", lambda b, c=cmd: self.control(b, c))
             controls.pack_start(b, False, False, 0)
         self.box.pack_start(controls, False, False, 6)
 
@@ -1926,6 +2020,28 @@ class Media(Popover):
         cr.restore()
         return False
 
+    def control(self, button, cmd):
+        sh(str(HOME / ".local/bin/shoji-media"), cmd)
+        if cmd == "toggle":  # only the icon changes: no rebuild, no flicker
+            self.playing = not self.playing
+            button.set_label(icon("pause" if self.playing else "play"))
+            if self.seek is not None:
+                self.anchor(self.seek.get_value())
+        else:  # another track: its cover, title and length
+            GLib.timeout_add(300, self.refresh_open)
+
+    def anchor(self, pos):
+        self.base_pos, self.base_time = pos, time.monotonic()
+
+    def glide_seek(self, scale, _clock):
+        if self.playing:
+            pos = min(scale.get_adjustment().get_upper(), self.base_pos + time.monotonic() - self.base_time)
+            scale.set_value(pos)
+            text = self.clock(pos)
+            if self.pos.get_text() != text:
+                self.pos.set_text(text)
+        return True
+
     def refresh_open(self):
         if self.win.get_visible():
             self.clear()
@@ -1934,7 +2050,7 @@ class Media(Popover):
         return False
 
     def tick(self):
-        """Move the seek bar once a second while the popover is open."""
+        """Once a second, re-read the player's position (the frame clock moves the bar between)."""
         if not self.win.get_visible():
             self.ticking = False
             return False
@@ -1943,8 +2059,7 @@ class Media(Popover):
                 pos = float(sh("playerctl", "-p", self.player, "position") or 0)
             except ValueError:
                 pos = 0
-            self.seek.set_value(pos)
-            self.pos.set_text(self.clock(pos))
+            self.anchor(pos)
         return True
 
     def show(self):
