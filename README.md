@@ -126,8 +126,8 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
 the release to `~/shoji` and runs the installer, which backs up everything it replaces.
 
 ```sh
-curl -fsSLo /tmp/shoji-bootstrap.sh https://raw.githubusercontent.com/andriar/shoji/v0.6.0/bootstrap.sh
-echo "7e7d1ad77822300d4e7a14095428d88b7737e07b6e7eac7270766262e9e4f8f5  /tmp/shoji-bootstrap.sh" | sha256sum -c \
+curl -fsSLo /tmp/shoji-bootstrap.sh https://raw.githubusercontent.com/andriar/shoji/v0.7.0/bootstrap.sh
+echo "4f3325a4b51f46b61703832cda581127667c64c43236fa7d93333ac439aa5f11  /tmp/shoji-bootstrap.sh" | sha256sum -c \
   && sh /tmp/shoji-bootstrap.sh            # optional: a palette name, e.g. sh /tmp/shoji-bootstrap.sh yoru
 ```
 

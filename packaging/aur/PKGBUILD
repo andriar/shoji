@@ -2,7 +2,7 @@
 # Shoji is a per-user theme: the package ships the repo to /usr/share/shoji and a `shoji-setup`
 # command that runs its installer for the current user (fonts, scripts and configs in $HOME).
 pkgname=shoji-hyprland
-pkgver=0.6.0
+pkgver=0.7.0
 pkgrel=1
 pkgdesc="A calm, Japanese-inspired desktop for Hyprland: one palette for bar, panels, lock screen, terminal and apps"
 arch=('any')

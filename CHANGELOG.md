@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.0 — 2026-10-26
+
+- The wallpaper is Fuji in ink, laid out on the golden ratio: the summit where the 0.382 lines
+  cross, the sun or tonight's moon in the golden spiral's eye, a gentle 1 : 5 profile with a flat
+  crater top, snow as deep as the season, mist at the foot, three pines.
+- The lock screen shows that picture sharp and without its moon; the ensō and the clock stand
+  where the moon was, the date and the password field below.
+- `tests/live/run.sh`: Shoji driven in a second Hyprland hidden inside yours, checked on screen
+  (meetings and Silent, Alt+Tab, idle → ink → lock, batches, the end-of-day card through AT-SPI,
+  the eye rest, label heights). `--shots` takes the README screenshots and demo.gif on demo data.
+- Fixed:
+  - card text sat low: GTK 3 doubles a label's height on screen when letter-spacing is 1px or more;
+  - the pointer stayed visible over the ink screen;
+  - the screen size could come from a switched-off monitor;
+  - `shoji apply` kept a stale lock picture.
+
 ## 0.6.0 — 2026-10-26
 
 - 設 Preferences: every prefs.json choice in one popover, a line on what each does.
