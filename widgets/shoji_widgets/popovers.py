@@ -261,14 +261,22 @@ class ThemeManager(Popover):
     name = "theme"
     width = 720
 
+    # traditional colours to start from (日本の伝統色); any hex works too
+    GROUNDS = [("墨", "#1c1b19"), ("濡羽", "#1d2128"), ("鉄紺", "#17184b"), ("千歳緑", "#1d2b24"),
+               ("生成", "#f7f3e8"), ("白練", "#f3f3f2"), ("卯の花", "#f7fcfe"), ("桜", "#fdf1f2")]
+    ACCENTS = [("朱", "#eb6101"), ("紅", "#d7003a"), ("山吹", "#f8b500"), ("若竹", "#68be8d"),
+               ("瑠璃", "#1e50a2"), ("藤", "#bba1cb"), ("青磁", "#7ebea5"), ("金茶", "#f39800")]
+
     def __init__(self, manager):
         super().__init__(manager, anchor_right=False)
         Layer.set_margin(self.win, Layer.Edge.TOP, 90)
+        Layer.set_keyboard_mode(self.win, Layer.KeyboardMode.ON_DEMAND)  # the name field takes typing
+        self.draft = None  # the palette being made in the editor, or None for the grid
 
     def palettes(self):
         sys.path.insert(0, str(HOME / ".local/bin"))
-        mod = importlib.machinery.SourceFileLoader("shoji_mod", SHOJI).load_module()
-        return mod.PALETTES
+        self.mod = importlib.machinery.SourceFileLoader("shoji_mod", SHOJI).load_module()
+        return self.mod.PALETTES
 
     def preview(self, p):
         area = Gtk.DrawingArea()
@@ -336,6 +344,9 @@ class ThemeManager(Popover):
         head.pack_start(close, False, False, 0)
         self.box.pack_start(head, False, False, 4)
 
+        if self.draft is not None:
+            self.build_editor()
+            return
         grid = Gtk.Grid(column_homogeneous=True, column_spacing=12, row_spacing=12)
         for i, (pid, p) in enumerate(pals.items()):
             b = Gtk.Button()
@@ -348,10 +359,26 @@ class ThemeManager(Popover):
             line.pack_start(label(f"{p['kanji']} {p['name']}", "name"), False, False, 0)
             line.pack_start(label(p["note"], "label-small"), False, False, 0)
             line.pack_end(label("in use" if pid == cur else ("dark" if p["dark"] else "light"), "label-small", xalign=1), False, False, 0)
+            if p.get("user"):
+                drop = Gtk.Button(label=icon("x"))
+                drop.get_style_context().add_class("nav")
+                drop.set_tooltip_text("Remove this palette")
+                drop.connect("clicked", lambda *_, n=pid: self.remove(n))
+                line.pack_end(drop, False, False, 0)
             v.pack_start(line, False, False, 0)
             b.add(v)
             b.connect("clicked", lambda *_, n=pid: self.apply(n))
             grid.attach(b, i % 3, i // 3, 1, 1)
+        new = Gtk.Button()
+        new.get_style_context().add_class("card")
+        nv = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, valign=Gtk.Align.CENTER)
+        nv.pack_start(label(icon("plus"), "icon", xalign=0.5), False, False, 0)
+        nv.pack_start(label("Your own", "name", xalign=0.5), False, False, 0)
+        nv.pack_start(label("a ground and an accent", "label-small", xalign=0.5), False, False, 0)
+        new.add(nv)
+        new.connect("clicked", lambda *_: self.edit({"name": "", "bg": "#1c1b19", "accent": "#eb6101"}))
+        n = len(pals)
+        grid.attach(new, n % 3, n // 3, 1, 1)
         self.box.pack_start(grid, False, False, 4)
 
         opts = Gtk.Box(spacing=10)
@@ -376,6 +403,109 @@ class ThemeManager(Popover):
                               f"(now {season[1]})", "muted"), False, False, 0)
         self.box.pack_start(seas, False, False, 0)
         self.box.pack_start(label(f"Same from a terminal: shoji apply {cur} · shoji list · Super+Shift+T", "mono"), False, False, 2)
+
+    # ---- your own palette
+    def edit(self, draft):
+        self.draft = draft
+        self.clear()
+        self.build()
+        self.box.show_all()
+
+    def swatches(self, title, colours, key):
+        row = Gtk.Box(spacing=6)
+        row.pack_start(label(title, "label-small"), False, False, 0)
+        for kanji, hexc in colours:
+            b = Gtk.Button()
+            b.get_style_context().add_class("swatch")
+            if self.draft[key].lower() == hexc:
+                b.get_style_context().add_class("on")
+            dot = Gtk.DrawingArea()
+            dot.set_size_request(22, 22)
+            dot.connect("draw", lambda _w, cr, c=hexc: (cr.set_source_rgba(*rgba(c)), cr.arc(11, 11, 10, 0, 2 * math.pi),
+                                                       cr.fill(), False)[-1])
+            b.add(dot)
+            b.set_tooltip_text(f"{kanji} {hexc}")
+            b.connect("clicked", lambda *_, c=hexc: self.edit({**self.draft, key: c}))
+            row.pack_start(b, False, False, 0)
+        entry = Gtk.Entry(text=self.draft[key], width_chars=8, max_length=7)
+        entry.connect("activate", lambda e: self.set_hex(key, e.get_text()))
+        entry.connect("focus-out-event", lambda e, _ev: (self.set_hex(key, e.get_text()), False)[1])
+        row.pack_end(entry, False, False, 0)
+        return row
+
+    def set_hex(self, key, text):
+        text = text.strip().lower()
+        text = text if text.startswith("#") else "#" + text
+        if len(text) == 7 and all(ch in "0123456789abcdef" for ch in text[1:]) and text != self.draft[key]:
+            GLib.idle_add(lambda: (self.edit({**self.draft, key: text}), False)[1])
+
+    def build_editor(self):
+        d = self.draft
+        p = self.mod.complete_palette(d["name"] or "Yours", d["bg"], d["accent"])
+        top = Gtk.Box(spacing=12)
+        prev = self.preview(p)
+        prev.set_size_request(250, 140)
+        top.pack_start(prev, False, False, 0)
+        info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.name_entry = Gtk.Entry(placeholder_text="Name it (e.g. Sumi)", text=d["name"])
+        self.name_entry.connect("changed", lambda e: self.draft.update(name=e.get_text()))
+        info.pack_start(self.name_entry, False, False, 0)
+        c = self.mod.contrast
+        checks = [("text", c(p["text"], p["bg"]), 4.5), ("muted", c(p["muted"], p["bg"]), 4.5),
+                  ("accent", c(p["accent"], p["bg"]), 3.0), ("label on accent", c(p["on_accent"], p["accent"]), 4.5)]
+        self.passes = all(v >= need for _, v, need in checks)
+        for what, v, need in checks:
+            info.pack_start(label(f"{what:<16} {v:5.2f}  {'pass' if v >= need else 'too faint'}", "mono"), False, False, 0)
+        if p["accent"].lower() != d["accent"].lower():
+            info.pack_start(label(f"accent eased to {p['accent']} so it reads", "label-small"), False, False, 0)
+        top.pack_start(info, True, True, 0)
+        self.box.pack_start(top, False, False, 4)
+        self.box.pack_start(self.swatches("GROUND", self.GROUNDS, "bg"), False, False, 2)
+        self.box.pack_start(self.swatches("ACCENT", self.ACCENTS, "accent"), False, False, 2)
+        buttons = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        cancel = Gtk.Button(label="Cancel")
+        cancel.get_style_context().add_class("chip")
+        cancel.connect("clicked", lambda *_: self.edit_done())
+        save = Gtk.Button(label="Save & apply")
+        save.get_style_context().add_class("chip")
+        save.get_style_context().add_class("on")
+        save.set_sensitive(self.passes)
+        save.connect("clicked", lambda *_: self.save())
+        buttons.pack_start(cancel, False, False, 0)
+        buttons.pack_start(save, False, False, 0)
+        self.box.pack_start(buttons, False, False, 4)
+
+    def edit_done(self):
+        self.draft = None
+        self.clear()
+        self.build()
+        self.box.show_all()
+
+    def save(self):
+        d = self.draft
+        name = (d["name"] or "Yours").strip()
+        pid = "my-" + ("".join(ch for ch in name.lower() if ch.isalnum()) or "palette")
+        path = HOME / ".config/shoji/palettes.json"
+        try:
+            saved = json.loads(path.read_text())
+        except (OSError, ValueError):
+            saved = {}
+        saved[pid] = {"name": name, "bg": d["bg"], "accent": d["accent"]}
+        path.write_text(json.dumps(saved, indent=1, ensure_ascii=False) + "\n")
+        self.draft = None
+        self.apply(pid)
+
+    def remove(self, pid):
+        path = HOME / ".config/shoji/palettes.json"
+        try:
+            saved = json.loads(path.read_text())
+        except (OSError, ValueError):
+            return
+        saved.pop(pid, None)
+        path.write_text(json.dumps(saved, indent=1, ensure_ascii=False) + "\n")
+        if sh(SHOJI, "status") == pid:
+            subprocess.run([SHOJI, "apply", "aizome"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.show()
 
     def apply(self, name):
         p = self.palettes()[name]

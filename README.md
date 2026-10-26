@@ -77,7 +77,8 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
 - **Screenshots** (PrtSc): copied and saved, then a small card in the corner with the picture and
   Open / Folder / Delete; it leaves by itself after 6 s.
 - **Tabbed windows** (Super+T) as paper tabs; **one key per app** (Super+K Slack, Super+B browser…).
-- **Theme manager** (Super+Shift+T): six palettes, follow the sun.
+- **Theme manager** (Super+Shift+T): six palettes, follow the sun, and **your own**: pick a ground and
+  an accent from traditional colours (or any hex); contrast is checked live and the rest is derived.
 
 **Everything in one palette**
 - GTK3 apps (Thunar first), Qt (qt6ct), ghostty, starship, btop, fzf, bat, delta, fuzzel, hyprlock,
@@ -235,7 +236,7 @@ line in new terminals), `"rin"` (false = no bell), `"auto_silent"` (false = no S
 
 ## Make your own palette
 
-Add an entry to `PALETTES` in `bin/shoji` (ground, text, muted, accent, text-on-accent, and the
+Easiest: Theme manager → **Your own** (saved in `~/.config/shoji/palettes.json`). By hand: add an entry to `PALETTES` in `bin/shoji` (ground, text, muted, accent, text-on-accent, and the
 wallpaper sky and hills), then `shoji doctor <name>` to check contrast and `shoji apply <name>`.
 
 ## How it is built

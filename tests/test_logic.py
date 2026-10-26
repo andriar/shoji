@@ -58,6 +58,18 @@ class Palettes(unittest.TestCase):
             self.assertGreaterEqual(shoji.contrast(t["on_accent"], t["accent"]), 4.5, pid)
 
 
+class YourOwnPalette(unittest.TestCase):
+    def test_every_swatch_pair_passes(self):
+        from shoji_widgets.popovers import ThemeManager
+        for _, bg in ThemeManager.GROUNDS:
+            for _, accent in ThemeManager.ACCENTS:
+                p = shoji.complete_palette("t", bg, accent)
+                self.assertGreaterEqual(shoji.contrast(p["text"], bg), 4.5, (bg, accent))
+                self.assertGreaterEqual(shoji.contrast(p["muted"], bg), 4.5, (bg, accent))
+                self.assertGreaterEqual(shoji.contrast(p["accent"], bg), 3.0, (bg, accent))
+                self.assertGreaterEqual(shoji.contrast(p["on_accent"], p["accent"]), 4.5, (bg, accent))
+
+
 class Meetings(unittest.TestCase):
     def setUp(self):
         from shoji_widgets import overlays

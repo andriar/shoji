@@ -209,6 +209,46 @@ def fit_accent(colour, bg, text, dark):
     return best, on
 
 
+# your own palettes (Theme manager → "+ Your own"): a name, a ground and an accent; the rest derived
+USER_PALETTES = CFG / "shoji/palettes.json"
+
+
+def complete_palette(name, bg, accent, kanji="自"):
+    """A full palette from a ground and an accent: text and muted text that pass 4.5:1, the accent
+    moved until it holds (fit_accent), and a sky and hills for the wallpaper."""
+    dark = lum(bg) < 0.2
+    text = "#e8e6e1" if dark else "#1f1d1a"
+    t = 0.55
+    muted = mix(bg, text, t)
+    while contrast(muted, bg) < 4.6 and t < 0.95:
+        t += 0.03
+        muted = mix(bg, text, t)
+    acc, on = fit_accent(accent, bg, text, dark)
+    shade = "#000000" if dark else text
+    hills = ((mix(bg, text, 0.05), mix(bg, shade, 0.12), mix(bg, shade, 0.28)) if dark else
+             (mix(bg, text, 0.12), mix(bg, text, 0.19), mix(bg, text, 0.28)))
+    return dict(kanji=kanji, name=name, note="your own", dark=dark, pair="hiru" if dark else "aizome",
+                bg=bg, text=text, muted=muted, accent=acc, on_accent=on, user=True,
+                sky=(mix(bg, "#000000" if dark else "#ffffff", 0.08), mix(bg, acc, 0.10)), hills=hills)
+
+
+def user_palettes():
+    try:
+        saved = json.loads(USER_PALETTES.read_text())
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for pid, p in saved.items():
+        try:
+            out[pid] = complete_palette(p["name"], p["bg"], p["accent"], p.get("kanji", "自"))
+        except (KeyError, ValueError):
+            continue
+    return out
+
+
+PALETTES.update(user_palettes())
+
+
 def tokens(name):
     """Palette -> every token the configs use (Catppuccin-style names kept for old CSS)."""
     p = PALETTES[name]

@@ -180,6 +180,9 @@ scale slider { min-width: 14px; min-height: 14px; margin: -5px; border-radius: 7
         box-shadow: none; color: @text; }
 .card:hover { background: @hover; }
 .card.active { border-color: @accent; }
+.swatch { background: transparent; background-image: none; border: none; box-shadow: none; padding: 2px;
+          border-radius: 13px; }
+.swatch.on { box-shadow: inset 0 0 0 2px @text; }
 .card .name { font-family: "Kaisei Opti"; font-weight: 700; font-size: 13px; }
 /* media: glass. A thinner pane than the other panels, so the blurred desktop and the cover's
    colour wash show through; a hairline and a top highlight give the glass an edge */
