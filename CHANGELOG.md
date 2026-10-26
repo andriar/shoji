@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 — 2026-10-27
 
 - 家 Homelab: `shoji-homelab` watches Docker (by compose stack), systemd units, public endpoints,
   disks / memory / swap and backup ages every 30 s; the bar shows a quiet 11 px server glyph, red
