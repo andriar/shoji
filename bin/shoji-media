@@ -5,7 +5,9 @@
                          changes. The bars are drawn and animated by the bar's own CSS (class
                          "playing" runs the animation), so nothing here runs per frame.
   shoji-media info       JSON of the current track for the Media popover (fetches https covers)
-  shoji-media toggle|next|previous
+  shoji-media toggle|next|previous|position [SECONDS]
+
+With several players open (a browser and Spotify), the one playing wins, then a paused one.
 
 The bars loop the way Spotify's do: decoration while playing, not a spectrum of the audio.
 The module hides when no player is open.
@@ -30,13 +32,31 @@ def playerctl(*args):
         return ""
 
 
-def track():
-    out = playerctl("metadata", "--format", "\t".join("{{%s}}" % f for f in FIELDS))
+def player(previous=None):
+    """The player to show: a playing one (the one already shown, if it still plays), else a
+    paused one. Plain `playerctl` would take whichever registered first."""
+    names = playerctl("-l").splitlines()
+    status = {n: playerctl("-p", n, "status") for n in names}
+    for wanted in ("Playing", "Paused"):
+        if status.get(previous) == wanted:
+            return previous
+        for n in names:
+            if status[n] == wanted:
+                return n
+    return None
+
+
+def track(name=None):
+    name = name or player()
+    if not name:
+        return None
+    out = playerctl("-p", name, "metadata", "--format", "\t".join("{{%s}}" % f for f in FIELDS))
     values = out.split("\t") if out else []
     if len(values) != len(FIELDS):
         return None
     t = dict(zip(FIELDS, values))
-    t["position"] = playerctl("position") or "0"
+    t["player"] = name
+    t["position"] = playerctl("-p", name, "position") or "0"
     return t
 
 
@@ -60,9 +80,10 @@ def esc(s):
 
 
 def watch():
-    last = None
+    last, name = None, None
     while True:
-        t = track()
+        name = player(name)
+        t = track(name) if name else None
         if not t or t["status"] not in ("Playing", "Paused"):
             line = {"text": "", "class": "none"}
         else:
@@ -86,8 +107,10 @@ def main():
         t = track() or {}
         fetch_cover(t.get("mpris:artUrl", ""))
         print(json.dumps(t, ensure_ascii=False))
-    elif arg in ("toggle", "next", "previous"):
-        playerctl({"toggle": "play-pause"}.get(arg, arg))
+    elif arg in ("toggle", "next", "previous", "position"):
+        name = player()
+        if name:
+            playerctl("-p", name, {"toggle": "play-pause"}.get(arg, arg), *sys.argv[2:3])
     else:
         sys.exit(__doc__)
 

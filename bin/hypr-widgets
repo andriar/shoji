@@ -1652,7 +1652,8 @@ class Media(Popover):
                 acc = [acc[0] + r * w, acc[1] + g * w, acc[2] + b * w]
                 total += w
         h, sat, val = colorsys.rgb_to_hsv(*(c / total for c in acc))
-        r, g, b = colorsys.hsv_to_rgb(h, max(sat, 0.45), min(max(val, 0.55), 0.8))
+        sat = sat if sat < 0.12 else max(sat, 0.45)  # a grey cover stays grey; a dull colour gets vivid
+        r, g, b = colorsys.hsv_to_rgb(h, sat, min(max(val, 0.55), 0.8))
         return "#%02x%02x%02x" % (round(r * 255), round(g * 255), round(b * 255))
 
     def build(self):
@@ -1662,6 +1663,7 @@ class Media(Popover):
             self.header("Media")
             self.box.pack_start(label("Nothing playing", "muted"), False, False, 6)
             return
+        self.player = t.get("player", "")
         pix = self.cover(t.get("mpris:artUrl", ""))
         wash = self.wash(pix) if pix else None
         self.tint.load_from_data(
@@ -1669,16 +1671,22 @@ class Media(Popover):
              if wash else "").encode())
         if pix:
             w, h = pix.get_width(), pix.get_height()
-            if 0.85 < w / h < 1.15:  # album art: square
+            square = 0.85 < w / h < 1.15
+            if square:  # album art
                 side = min(w, h)
                 pix = pix.new_subpixbuf((w - side) // 2, (h - side) // 2, side, side)
-                size = (self.ART, self.ART)
-            else:  # a video thumbnail (16:9): whole, full width, rather than a blurry crop
-                size = (self.ART, round(self.ART * h / w))
-            pix = pix.scale_simple(*size, GdkPixbuf.InterpType.HYPER)
+                w = h = side
+            size = (self.ART, self.ART if square else round(self.ART * h / w))
+            if w >= self.ART * 0.8:  # big enough (Spotify sends 640 px): fill the frame
+                front, back = pix.scale_simple(*size, GdkPixbuf.InterpType.HYPER), None
+            else:  # a browser thumbnail (Chrome hands over ~150 px): sharp at its own size,
+                # over a blurred copy of itself instead of one blown-up, soft image
+                front = pix
+                back = pix.scale_simple(12, max(1, round(12 * h / w)), GdkPixbuf.InterpType.BILINEAR) \
+                          .scale_simple(*size, GdkPixbuf.InterpType.BILINEAR)
             art = Gtk.DrawingArea()
             art.set_size_request(*size)
-            art.connect("draw", self.draw_art, pix)
+            art.connect("draw", self.draw_art, front, back)
             self.box.pack_start(art, False, False, 0)
         title = label(t.get("title") or "Unknown", "media-title")
         title.set_ellipsize(Pango.EllipsizeMode.END)
@@ -1692,7 +1700,7 @@ class Media(Popover):
             self.seek = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, length, 1)
             self.seek.set_draw_value(False)
             self.seek.set_value(float(t.get("position") or 0))
-            self.seek.connect("change-value", lambda _s, _scroll, v: (sh("playerctl", "position", str(max(0, v))), False)[1])
+            self.seek.connect("change-value", lambda _s, _scroll, v: (sh("playerctl", "-p", self.player, "position", str(max(0, v))), False)[1])
             self.box.pack_start(self.seek, False, False, 4)
             times = Gtk.Box()
             self.pos = label(self.clock(self.seek.get_value()), "mono")
@@ -1720,15 +1728,36 @@ class Media(Popover):
         return f"{sec // 3600}:{sec % 3600 // 60:02d}:{sec % 60:02d}" if sec >= 3600 else f"{sec // 60}:{sec % 60:02d}"
 
     @staticmethod
-    def draw_art(widget, cr, pix):
-        w, h, r = widget.get_allocated_width(), widget.get_allocated_height(), 12
+    def rounded(cr, x0, y0, w, h, r):
         cr.new_sub_path()
-        for x, y, a in ((w - r, r, -math.pi / 2), (w - r, h - r, 0), (r, h - r, math.pi / 2), (r, r, math.pi)):
+        for x, y, a in ((x0 + w - r, y0 + r, -math.pi / 2), (x0 + w - r, y0 + h - r, 0),
+                        (x0 + r, y0 + h - r, math.pi / 2), (x0 + r, y0 + r, math.pi)):
             cr.arc(x, y, r, a, a + math.pi / 2)
         cr.close_path()
+
+    def draw_art(self, widget, cr, front, back):
+        w, h = widget.get_allocated_width(), widget.get_allocated_height()
+        self.rounded(cr, 0, 0, w, h, 12)
         cr.clip()
-        Gdk.cairo_set_source_pixbuf(cr, pix, (w - pix.get_width()) / 2, 0)
+        if back is None:
+            Gdk.cairo_set_source_pixbuf(cr, front, (w - front.get_width()) / 2, 0)
+            cr.paint()
+            return False
+        Gdk.cairo_set_source_pixbuf(cr, back, 0, 0)
         cr.paint()
+        cr.set_source_rgba(0, 0, 0, 0.25)
+        cr.paint()
+        fw, fh = front.get_width(), front.get_height()
+        x, y = round((w - fw) / 2), round((h - fh) / 2)
+        cr.set_source_rgba(0, 0, 0, 0.35)  # a soft drop under the sharp picture
+        self.rounded(cr, x + 1, y + 3, fw, fh, 6)
+        cr.fill()
+        self.rounded(cr, x, y, fw, fh, 6)
+        cr.save()
+        cr.clip()
+        Gdk.cairo_set_source_pixbuf(cr, front, x, y)
+        cr.paint()
+        cr.restore()
         return False
 
     def refresh_open(self):
@@ -1745,7 +1774,7 @@ class Media(Popover):
             return False
         if self.seek is not None:
             try:
-                pos = float(sh("playerctl", "position") or 0)
+                pos = float(sh("playerctl", "-p", self.player, "position") or 0)
             except ValueError:
                 pos = 0
             self.seek.set_value(pos)
