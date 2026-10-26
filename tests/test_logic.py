@@ -288,6 +288,22 @@ class Ink(unittest.TestCase):
         self.assertEqual(out.count("\n"), conf.rstrip("\n").count("\n") + 1)   # nothing else moved
         self.assertIn("lock-enso.png", out)
 
+    def test_the_pointer_setting_comes_back(self):
+        from unittest import mock
+        calls = []
+
+        def run(cmd, **kw):
+            calls.append(cmd)
+            return type("R", (), {"stdout": '{"option": "cursor:inactive_timeout", "float": 5.0}'})()
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(self.ink, "CURSOR", Path(d) / "c"), \
+                mock.patch.object(self.ink.subprocess, "run", run):
+            self.ink.hide_cursor()
+            self.ink.hide_cursor()   # a second start must not save its own 1 as the "before"
+            self.ink.restore_cursor()
+            self.assertFalse(self.ink.CURSOR.exists())
+        evals = [c[2] for c in calls if c[1] == "eval"]
+        self.assertEqual(evals[-1], "hl.config({ cursor = { inactive_timeout = 5 } })")
+
     def test_ink_off_in_prefs_never_starts(self):
         with tempfile.TemporaryDirectory() as d:
             self.ink.PREFS = Path(d) / "prefs.json"

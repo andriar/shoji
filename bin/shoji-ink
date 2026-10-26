@@ -31,6 +31,7 @@ PID = RUN / "shoji-ink.pid"
 CACHE = HOME / ".cache/shoji"
 LOCK_FRAME = CACHE / "lock-ink.png"
 LOCK_CONF = CACHE / "hyprlock-ink.conf"
+CURSOR = RUN / "shoji-ink.cursor"   # Hyprland's cursor:inactive_timeout before the ink hid the pointer
 THEME = HOME / ".config/shoji/current.json"
 PREFS = HOME / ".config/shoji/prefs.json"
 FPS = 8             # a drop takes twelve seconds to spread: more frames would only cost power
@@ -225,7 +226,6 @@ def show(preview=False):
             return True
 
         win.connect("draw", draw)
-        win.connect("realize", lambda w: w.get_window().set_cursor(Gdk.Cursor.new_for_display(w.get_display(), Gdk.CursorType.BLANK_CURSOR)))
         win.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.KEY_PRESS_MASK)
         win.connect("button-press-event", leave)
         win.connect("key-press-event", leave)
@@ -252,6 +252,29 @@ def show(preview=False):
     else:
         GLib.timeout_add(1000 // FPS, tick)
     Gtk.main()
+
+
+def hide_cursor():
+    """A layer surface's blank GDK cursor is not honoured, so ask Hyprland to hide the pointer once it
+    rests a second. If the ink dies without restoring it, the pointer still comes back on a move."""
+    try:
+        before = json.loads(subprocess.run(["hyprctl", "getoption", "cursor:inactive_timeout", "-j"],
+                                           capture_output=True, text=True, timeout=3).stdout)["float"]
+    except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):
+        return
+    if not CURSOR.exists():   # a previous ink that died: its saved value is the real one
+        CURSOR.write_text(str(before))
+    subprocess.run(["hyprctl", "eval", "hl.config({ cursor = { inactive_timeout = 1 } })"], capture_output=True)
+
+
+def restore_cursor():
+    try:
+        before = float(CURSOR.read_text())
+    except (OSError, ValueError):
+        return
+    subprocess.run(["hyprctl", "eval", f"hl.config({{ cursor = {{ inactive_timeout = {before:g} }} }})"],
+                   capture_output=True)
+    CURSOR.unlink(missing_ok=True)
 
 
 def running():
@@ -311,9 +334,11 @@ def main():
                              start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
         PID.write_text(str(os.getpid()))
+        hide_cursor()
         try:
             show(preview=cmd == "preview")
         finally:
+            restore_cursor()
             PID.unlink(missing_ok=True)
     elif cmd == "lock":
         lock()
@@ -321,6 +346,8 @@ def main():
         pid = running()
         if pid:
             os.kill(pid, signal.SIGTERM)
+        else:
+            restore_cursor()   # an ink that died left the pointer setting behind
     elif cmd == "frame" and len(args) > 1:
         frame(args[1], float(args[2]) if len(args) > 2 else 12.0)
     else:
