@@ -528,23 +528,72 @@ def render_enso_levels(t):
 
 
 def render_lock_enso(t):
+    """One brush stroke: pressed in at the start, a steady body, then a dry tail that splits into
+    bristle streaks. The wobble is seeded, so every render (and every palette) draws the same hand."""
     import cairo
+    import random
     size = 640
     s = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
     c = cairo.Context(s)
     cx = cy = size / 2
-    col = cairo_rgb(t["text"], 0.9)
-    c.set_line_cap(cairo.LINE_CAP_ROUND)
-    # brush: a few overlapping strokes of falling width give the dry-brush tail
-    for i, (w, a0, a1, alpha) in enumerate(((18, -1.9, 4.05, 0.92), (10, -1.85, 4.25, 0.55), (4, -1.7, 4.4, 0.35))):
-        c.set_source_rgba(col[0], col[1], col[2], alpha)
-        c.set_line_width(w)
-        c.arc(cx, cy, 272 - i * 7, a0, a1)
+    col = cairo_rgb(t["text"], 1)
+    rnd = random.Random(7)
+    a0, a1, n = 2.25, 2.25 + 5.3, 360     # starts lower left, sweeps clockwise; the gap stays open
+    body = 32
+
+    def radius(a):
+        return 258 * (1 + 0.007 * math.sin(2 * a + 0.7) + 0.004 * math.sin(5 * a + 2.1))
+
+    def width(u):  # u: 0 at the start of the stroke, 1 at the tail
+        if u < 0.06:
+            return body * (0.7 + 0.3 * math.sin(u / 0.06 * math.pi / 2))
+        if u < 0.62:
+            return body * (1 - 0.25 * (u - 0.06) / 0.56)
+        return body * 0.75 * (1 - (min(u, 1) - 0.62) / 0.38) ** 1.15
+
+    def point(u, offset):
+        a = a0 + (a1 - a0) * u
+        r = radius(a) + offset
+        return cx + r * math.cos(a), cy + r * math.sin(a)
+
+    us = [i / n for i in range(n + 1)]
+    c.push_group()  # body + rounded start inked once, then laid down at 0.9
+    c.set_source_rgba(col[0], col[1], col[2], 1)
+    c.move_to(*point(0, width(0) / 2))
+    for u in us[1:]:
+        c.line_to(*point(u, width(u) / 2))
+    for u in reversed(us):
+        c.line_to(*point(u, -width(u) / 2))
+    c.close_path()
+    c.fill()
+    x, y = point(0, 0)  # rounded, loaded start
+    c.arc(x, y, width(0) / 2, 0, 2 * math.pi)
+    c.fill()
+    c.pop_group_to_source()
+    c.paint_with_alpha(0.9)
+    # dry brush: thin gaps open up inside the body as the ink runs out ...
+    c.set_operator(cairo.OPERATOR_CLEAR)
+    for _ in range(7):
+        across, u_start = rnd.uniform(-0.36, 0.36), rnd.uniform(0.55, 0.8)
+        c.set_line_width(rnd.uniform(1.0, 2.2))
+        c.move_to(*point(u_start, across * width(u_start)))
+        for u in us:
+            if u > u_start:
+                c.line_to(*point(u, across * width(u)))
         c.stroke()
-    c.set_source_rgba(*cairo_rgb(t["text"], 0.3))
-    c.set_line_width(3)
-    c.arc(cx, cy, 252, -1.2, 3.0)
-    c.stroke()
+    # ... and a few bristles run on past the end of the body
+    c.set_operator(cairo.OPERATOR_OVER)
+    c.set_line_cap(cairo.LINE_CAP_ROUND)
+    for _ in range(5):
+        across, u_end = rnd.uniform(-0.5, 0.5), rnd.uniform(1.0, 1.04)
+        c.set_source_rgba(col[0], col[1], col[2], rnd.uniform(0.45, 0.8))
+        c.set_line_width(rnd.uniform(0.8, 1.6))
+        u = 0.9
+        c.move_to(*point(u, across * width(u)))
+        while u < u_end:
+            u += 0.004
+            c.line_to(*point(u, across * max(width(u), 6)))
+        c.stroke()
     CACHE.mkdir(parents=True, exist_ok=True)
     s.write_to_png(str(CACHE / "lock-enso.png"))
     # the seal (錠) is drawn by hyprlock as a label on an accent shape

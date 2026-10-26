@@ -119,11 +119,11 @@ window#waybar { background: transparent; color: @text; }
 window#waybar > box {
   background: @elev1;
   border: 1px solid @edge;
-  border-radius: 9px;
+  border-radius: 12px;
   padding: 0 4px;
 }
 
-tooltip { background: @elev3; border: 1px solid @edge; border-radius: 10px; }
+tooltip { background: @elev3; border: 1px solid @edge; border-radius: 12px; }
 tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
 
 /* every clickable thing */
@@ -131,7 +131,7 @@ tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
 #custom-system, #custom-keepawake, #custom-nightlight, #network, #pulseaudio, #image, #battery, #tray {
   padding: 0 7px;
   margin: 3px 1px;
-  border-radius: 5px;
+  border-radius: 4px;
   background: transparent;
   color: @text;
   transition: background 150ms ease-out, color 150ms ease-out;

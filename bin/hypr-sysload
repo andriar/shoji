@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPU + RAM as one waybar chip (JSON). Neutral until either passes 70% (warning) or 90% (critical)."""
+"""CPU + RAM as one waybar chip (JSON). Hidden below 70%; warning from 70%, critical from 90%."""
 import json
 import os
 from pathlib import Path
@@ -29,7 +29,8 @@ cpu, mem = cpu_percent(), mem_percent()
 peak = max(cpu, mem)
 cls = "critical" if peak >= 90 else "warning" if peak >= 70 else "normal"
 print(json.dumps({
-    "text": f"cpu {cpu:>2} · mem {mem:>2}",  # fixed width: neighbours do not shift
+    # only shown when it needs attention (empty text hides the module); fixed width once shown
+    "text": "" if cls == "normal" else f"cpu {cpu:>2} · mem {mem:>2}",
     "class": cls,
     "tooltip": f"CPU {cpu}% · RAM {mem}%\nClick: open btop",
 }, ensure_ascii=False))

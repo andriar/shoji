@@ -21,7 +21,7 @@ end)
 -- paper hairlines: the accent never draws a border
 hl.config({ general = { border_size = 1,
     col = { active_border = c.edge_active, inactive_border = c.edge_dim } },
-    decoration = { rounding = 18 } })
+    decoration = { rounding = 16 } })
 
 -- glass behind every shell surface
 hl.layer_rule({ name = "shoji-blur",
@@ -75,7 +75,7 @@ general {
     col.active_border = $edge
     col.inactive_border = rgba(00000000)
 }
-decoration { rounding = 18 }
+decoration { rounding = 16 }
 
 layerrule = blur, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop)$
 layerrule = ignorealpha 0.2, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop)$
