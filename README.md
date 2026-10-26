@@ -241,6 +241,9 @@ wallpaper sky and hills), then `shoji doctor <name>` to check contrast and `shoj
 - `bin/hypr-widgets` — one small GTK3 layer-shell process: ensō OSD, Koyomi, the popovers (Sound,
   Network, Battery, Media, Theme), launcher, shortcuts sheet and the zazen ensō. It also brings a
   clicked notification's window forward and keeps today's agenda cached for `shoji greet`.
+- `widgets/shoji_widgets/` — hypr-widgets' surfaces as modules: `base` (palette, CSS, motion, Glide),
+  `koyomi`, `popovers`, `overlays` (OSD, cards, meetings, zazen); installed to
+  `~/.local/share/shoji/widgets`. Tests: `python3 -m unittest discover tests`.
 - `bin/shoji-media` (now playing, picks the playing player), `bin/shoji-zazen` (focus sessions),
   `bin/shoji-ws` (workspace buttons, see below), `bin/hypr-sysload`, `bin/shoji-level`.
 - `bin/hypr-term` — opens a terminal as a D-Bus action on the running ghostty;

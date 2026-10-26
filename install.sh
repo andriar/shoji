@@ -61,6 +61,9 @@ fc-cache -f "$FONTS" >/dev/null
 say "4/6 Scripts → $BIN"
 mkdir -p "$BIN" "$HOME/.config/shoji"
 install -m 755 "$REPO"/bin/* "$BIN/"
+# hypr-widgets' surfaces: the shoji_widgets package
+mkdir -p "$HOME/.local/share/shoji/widgets/shoji_widgets"
+install -m 644 "$REPO"/widgets/shoji_widgets/*.py "$HOME/.local/share/shoji/widgets/shoji_widgets/"
 install -m 644 "$REPO"/generators/*.py "$HOME/.config/shoji/"
 
 say "5/6 Configs"

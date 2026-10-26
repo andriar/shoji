@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2 — 2026-10-26
+
+- Reduced motion (Super+Shift+M) now stills everything: Hyprland, GTK, the bar's equalizer, swaync,
+  and all of Shoji's glides, slides, fades and tweens; it survives a login and a config reload.
+- hypr-widgets split into the shoji_widgets package (base, koyomi, popovers, overlays); every
+  surface renders pixel-identical to the single file it was.
+- tests/: logic tests (seasons and contrast, meetings, the media player choice, zazen counts).
+
 ## 0.3.1 — 2026-10-26
 
 - Quiet in meetings: Silent turns itself on while a calendar event runs or the screen is shared,
