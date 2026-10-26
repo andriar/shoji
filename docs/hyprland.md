@@ -21,7 +21,13 @@ end)
 -- paper hairlines: the accent never draws a border
 hl.config({ general = { border_size = 1,
     col = { active_border = c.edge_active, inactive_border = c.edge_dim } },
-    decoration = { rounding = 16 } })
+    decoration = { rounding = 16 },
+    -- tabbed windows: paper tabs, the active one sealed in the accent
+    group = { col = { border_active = c.edge_active, border_inactive = c.edge_dim },
+        groupbar = { font_family = "Zen Kaku Gothic New", font_size = 11, height = 20, gradients = true,
+            gradient_rounding = 8, rounding = 8, indicator_height = 0, gaps_in = 4, gaps_out = 4,
+            col = { active = c.accent, inactive = c.surface0 },
+            text_color = c.on_accent, text_color_inactive = c.muted } } })
 
 -- glass behind every shell surface
 hl.layer_rule({ name = "shoji-blur",
@@ -47,6 +53,10 @@ hl.bind("SUPER + K", hl.dsp.exec_cmd("~/.local/bin/hypr-focus-or-launch slack gt
         { description = "Apps: Slack" })
 hl.bind("SUPER + B", hl.dsp.exec_cmd("~/.local/bin/hypr-focus-or-launch '^google-chrome$' gtk-launch google-chrome"),
         { description = "Apps: Browser" })
+-- tabbed windows: Super+T groups the window, Super+[ / ] walk the tabs
+hl.bind("SUPER + T",            hl.dsp.group.toggle(), { description = "Windows: Tab windows (group) on / off" })
+hl.bind("SUPER + bracketright", hl.dsp.group.next(),   { description = "Windows: Next tab" })
+hl.bind("SUPER + bracketleft",  hl.dsp.group.prev(),   { description = "Windows: Previous tab" })
 -- 坐禅 focus session: silent, no bar, other windows dimmed, an ensō counts down (again = stop)
 hl.bind("SUPER + Z", hl.dsp.exec_cmd("~/.local/bin/shoji-zazen toggle"), { description = "System: Zazen (25 min focus)" })
 hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("~/.local/bin/hypr-osd up"),   { locked = true, repeating = true })
