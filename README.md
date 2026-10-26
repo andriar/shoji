@@ -5,8 +5,8 @@
 **A calm, Japanese-inspired desktop for [Hyprland](https://hypr.land): light through paper.**
 
 One palette drives everything you see: the bar, the panels, launcher, lock screen, terminal,
-GTK and Qt apps, folder icons, the wallpaper, even VS Code and Spotify. Six palettes, all of
-them checked to WCAG 4.5:1.
+GTK and Qt apps, folder icons, the wallpaper, even VS Code and Spotify. Eight palettes, all of
+them checked to WCAG 4.5:1 (two of them to 7:1).
 
 ![Shoji: terminal, Thunar and the bar in the Aizome palette, under tonight's moon](docs/screenshots/desktop.png)
 
@@ -87,7 +87,8 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
 - GTK3 apps (Thunar first), Qt (qt6ct), ghostty, starship, btop, fzf, bat, delta, fuzzel, hyprlock,
   wlogout, Shoji's own folder icons, and themes for **VS Code, Spotify (spicetify) and Chrome**.
 - **Six palettes**: 藍染 Aizome (indigo · gold, default), 夜 Yoru (ink · vermilion), 夜桜 Yozakura
-  (night · sakura), 苔 Koke (moss), 昼 Hiru (washi, light), 雪 Yuki (snow, light).
+  (night · sakura), 苔 Koke (moss), 昼 Hiru (washi, light), 雪 Yuki (snow, light), and two at high
+  contrast (WCAG AAA, 7:1): 墨 Sumi (ink) and 白 Shiro (paper).
 
 ## Install
 

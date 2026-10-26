@@ -20,6 +20,7 @@ def load(name):
 
 
 shoji = load("shoji")
+shoji.PREFS = Path(tempfile.gettempdir()) / "shoji-tests-no-prefs.json"  # tests never read your prefs
 
 
 class Seasons(unittest.TestCase):
@@ -68,6 +69,15 @@ class YourOwnPalette(unittest.TestCase):
                 self.assertGreaterEqual(shoji.contrast(p["muted"], bg), 4.5, (bg, accent))
                 self.assertGreaterEqual(shoji.contrast(p["accent"], bg), 3.0, (bg, accent))
                 self.assertGreaterEqual(shoji.contrast(p["on_accent"], p["accent"]), 4.5, (bg, accent))
+
+
+class HighContrast(unittest.TestCase):
+    def test_sumi_and_shiro_reach_aaa(self):
+        for pid in ("sumi", "shiro"):
+            t = shoji.tokens(pid)
+            self.assertGreaterEqual(shoji.contrast(t["text"], t["base"]), 7, pid)
+            self.assertGreaterEqual(shoji.contrast(t["muted"], t["base"]), 7, pid)
+            self.assertGreaterEqual(shoji.contrast(t["on_accent"], t["accent"]), 7, pid)
 
 
 class Meetings(unittest.TestCase):

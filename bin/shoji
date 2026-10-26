@@ -75,6 +75,13 @@ PALETTES = {
     "yuki": dict(kanji="雪", name="Yuki", note="snow · indigo", dark=False, pair="aizome",
                  bg="#f2f4f6", text="#1b2230", muted="#5d6675", accent="#2e5185", on_accent="#fbf8f1",
                  sky=("#f4f6f8", "#dfe5ec"), hills=("#cfd7e1", "#bcc6d3", "#a5b1c1")),
+    # high contrast (WCAG AAA: text and muted text at 7:1 or more)
+    "sumi": dict(kanji="墨", name="Sumi", note="ink · high contrast", dark=True, pair="shiro", aaa=True,
+                 bg="#0b0b0c", text="#f4f3ef", muted="#c9c7c0", accent="#ffcc4d", on_accent="#0b0b0c",
+                 sky=("#0b0b0c", "#151517"), hills=("#1a1a1c", "#121214", "#08080a")),
+    "shiro": dict(kanji="白", name="Shiro", note="paper · high contrast", dark=False, pair="sumi", aaa=True,
+                  bg="#ffffff", text="#111111", muted="#3c3a37", accent="#9b2d10", on_accent="#ffffff",
+                  sky=("#ffffff", "#efefee"), hills=("#dcdcda", "#c9c9c6", "#b3b3af")),
 }
 WEEK_K = "月火水木金土日"  # datetime.weekday(): Monday = 0
 KNUM = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
@@ -266,7 +273,7 @@ def tokens(name):
         accent=p["accent"], accent2=p["accent"], on_accent=p["on_accent"], accent_text=p["accent"],
         ok=a[1], alert=a[0], warn=a[2], info=a[3],
     )
-    if seasonal_on():
+    if seasonal_on() and not p.get("aaa"):  # the high-contrast palettes keep their 7:1 accent
         acc, on = fit_accent(season()[2], bg, text, dark)
         t.update(accent=acc, accent2=acc, accent_text=acc, peach=acc, on_accent=on)
     return t
