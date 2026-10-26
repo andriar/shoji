@@ -18,6 +18,8 @@ folder icons and the wallpaper.
   prefer; click or scroll to switch), the time with the weekday in kanji, Lucide icons, app tray
   icons tucked behind ⋯.
 - **Koyomi** — click the clock for a kanji calendar beside quick settings and notifications.
+- **Rin (鈴)** — a small synthesised temple bell for critical notifications only
+  (`"rin": false` in `~/.config/shoji/prefs.json` silences it).
 - **Zazen (坐禅)** — Super+Z: 25 minutes of focus. Silent, no bar, other windows dimmed, an ensō
   closes at the top as the time passes; everything comes back at the end.
   Click a day to see its events and due tasks (the calendars GNOME Calendar shows, Google included).

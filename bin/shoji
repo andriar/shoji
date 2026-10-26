@@ -501,7 +501,35 @@ def shutil_which(prog):
     return shutil.which(prog) or (HOME / ".local/bin" / prog).exists()
 
 
+def render_rin():
+    """鈴 a small temple bell, synthesised (no sound file shipped): a few inharmonic partials of a
+    struck bowl, each with its own decay, a soft strike and a faint beat. swaync plays it for
+    critical notifications (gen_swaync)."""
+    import struct
+    import wave
+    out = HOME / ".local/share/shoji/rin.wav"
+    if out.exists():
+        return out
+    out.parent.mkdir(parents=True, exist_ok=True)
+    rate, secs, f0 = 48000, 3.2, 880.0
+    partials = [(1.0, 1.0, 1.2), (2.76, 0.45, 2.0), (5.40, 0.22, 3.4), (8.93, 0.10, 5.0)]  # ratio, gain, decay
+    frames = bytearray()
+    for i in range(int(rate * secs)):
+        t = i / rate
+        v = sum(g * math.exp(-d * t) * math.sin(2 * math.pi * f0 * r * t + 0.4 * math.sin(2 * math.pi * 1.7 * t))
+                for r, g, d in partials)
+        v *= min(1.0, t / 0.004) * 0.22  # 4 ms strike, quiet
+        frames += struct.pack("<h", int(max(-1, min(1, v)) * 32767))
+    with wave.open(str(out), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(bytes(frames))
+    return out
+
+
 def write_apps(name, t):
+    render_rin()
     write_vscode(name, t)
     write_spotify(name)
     write_chrome(name, t)
