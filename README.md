@@ -1,55 +1,73 @@
 # Shoji 障子
 
-A calm, Japanese-inspired theme for [Hyprland](https://hypr.land): light through paper.
-One palette file drives the bar, panels, launcher, lock screen, terminal, GTK and Qt apps,
-folder icons and the wallpaper.
+**A calm, Japanese-inspired desktop for [Hyprland](https://hypr.land): light through paper.**
 
-![Shoji desktop: terminal and Files in the Aizome palette](docs/screenshots/desktop.png)
+One palette drives everything you see: the bar, the panels, launcher, lock screen, terminal,
+GTK and Qt apps, folder icons, the wallpaper, even VS Code and Spotify. Six palettes, all of
+them checked to WCAG 4.5:1.
+
+![Shoji: terminal, Thunar and the bar in the Aizome palette, under tonight's moon](docs/screenshots/desktop.png)
+
+The look follows three old ideas. **Kanso** (簡素): show a thing only while it matters, so the
+cpu meter, the mic and the notification bell stay quiet until they have something to say.
+**Ma** (間): empty space is part of the design. **Shibui** (渋い): one accent colour, and it only
+means "you are here" or "this is on".
+
+## A tour
+
+| Koyomi: calendar, agenda, toggles and notifications | The same panel on Hiru (washi) |
+|---|---|
+| ![Koyomi in the Aizome palette: calendar with today's agenda, quick toggles, notifications stacked per app](docs/screenshots/koyomi.png) | ![Koyomi in the light Hiru palette](docs/screenshots/koyomi-light.png) |
+
+| Now playing | Ensō OSD |
+|---|---|
+| ![The bar shows the track with bars tinted by the cover; the Media popover shows the cover on its own colour wash](docs/screenshots/media.png) | ![Volume as an open brush circle in the top right](docs/screenshots/osd.png) |
+
+![Shortcuts sheet: every bind in four columns, click to run, type to search](docs/screenshots/keys.png)
+
+| Launcher | Theme manager |
+|---|---|
+| ![Launcher: frequent apps first, each app's own key on the right](docs/screenshots/launcher.png) | ![Theme manager: six palettes, follow the sun, seasonal accent](docs/screenshots/theme-manager.png) |
+
+| Zazen (focus) | Lock screen |
+|---|---|
+| ![Zazen: the bar is gone, other windows dim, an ensō counts down at the top](docs/screenshots/zazen.png) | ![Lock screen: a brush-stroke ensō around the clock, the date in kanji](docs/screenshots/lock.jpg) |
 
 ## What you get
 
-- **Six palettes** — 藍染 Aizome (indigo · gold, default), 夜 Yoru (ink · vermilion),
-  夜桜 Yozakura (night · sakura), 苔 Koke (moss), 昼 Hiru (washi, light), 雪 Yuki (snow, light).
-  Text, secondary text, accent, all 16 terminal colors and diff lines pass WCAG 4.5:1 on every palette.
-- **Ensō levels** — volume, mic and brightness show as an open brush circle in the top right,
-  even with Do Not Disturb on. A keyboard volume knob grows the stroke; the arc and the number
-  glide to the new level.
-- **One quiet bar** — workspaces as 一 二 三 四 (the current one is a seal; switch to 1 2 3 4 if you
-  prefer; click or scroll to switch), the time with the weekday in kanji, Lucide icons, app tray
-  icons tucked behind ⋯.
-- **Koyomi** — click the clock for a kanji calendar beside quick settings and notifications.
-- **Terminal greeting** (opt-in, `"greet": true` in prefs.json, then `shoji apply`): one dim line in
-  a new terminal, today's 候 and what is next, e.g. `霜始降 first frost  ·  15:00 Design review`.
-- **Rin (鈴)** — a small synthesised temple bell for critical notifications only
-  (`"rin": false` in `~/.config/shoji/prefs.json` silences it).
-- **Zazen (坐禅)** — Super+Z: 25 minutes of focus. Silent, no bar, other windows dimmed, an ensō
-  closes at the top as the time passes; everything comes back at the end.
-  Click a day to see its events and due tasks (the calendars GNOME Calendar shows, Google included).
-- **Popovers with one shape** — Sound (devices and volume), Network, Battery (laptops), Theme.
-- **Launcher** (Super+Space) — frequent apps first; searches names, descriptions and keywords.
-  Enter focuses the app if it is already open; Shift+Enter opens a new window. Apps with their own
-  key show it on the right.
-- **Shortcuts** (Super+/) — one cheat sheet with every described bind, in columns by group; click
-  one to run it, or start typing to search.
-- **Notifications** slide in from the right edge one at a time; the stack never stretches.
-- **Instant terminal** — `hypr-term` opens a ghostty window in ~20 ms (a cold start takes ~1 s) by
-  asking the ghostty that is already running.
-- **Theme manager** (Super+Shift+T) — six palettes, follow the sun (light by day, dark at night).
-- **Lock screen** with an ensō around the clock and the date in kanji.
-- **Paper folders** — Shoji draws its own folder icons in the palette; app icons come from Papirus.
-- **GTK3 apps on paper** — Thunar, pavucontrol, blueman and friends get the palette, flat buttons,
-  hairlines, an accent-tinted selection and an accent bar on the current sidebar place.
+**The bar**
+- Workspaces as 一 二 三 四 (the current one sealed in the accent), the time with the weekday in
+  kanji, a bell that gets a dot when something is unread.
+- Now playing: the title with four bars that move while music plays, tinted with the cover's colour
+  (smooth CSS animation, no polling per frame). Click for the Media popover.
+- Readings appear only when they need you: cpu · mem from 70 %, indicators only while on.
 
-| Theme manager | Koyomi | Ensō OSD |
-|---|---|---|
-| ![Theme manager with six palettes and the seasonal accent](docs/screenshots/theme-manager.png) | ![Koyomi: calendar with a day's agenda and the quick toggles; notifications sit to its right](docs/screenshots/koyomi.png) | ![Volume ensō in the top right](docs/screenshots/osd.png) |
+**Koyomi (暦), under the clock**
+- One container: the calendar, today's micro-season (七十二候, e.g. 霜始降 "first frost"), the day's
+  events and due tasks (whatever GNOME Calendar shows, Google included), quick toggles that show
+  their state, and notifications beside it.
+- Notifications stack per app like iOS; clicking one takes you to its window and workspace.
 
-![Wallpaper: ink-wash ridges under tonight's moon (dark palettes; the sun on light ones)](docs/screenshots/wallpaper.png)
+**Calm on purpose**
+- **Zazen** (Super+Z): 25 minutes of focus. Silent, no bar, other windows dimmed, an ensō closes
+  at the top; everything comes back at the end.
+- **Ensō** for volume, mic and brightness, shown even with Do Not Disturb on.
+- **Rin (鈴)**: a small synthesised temple bell for critical notifications only.
+- **Seasonal accent** (optional): 紅梅 spring, 青竹 summer, 紅葉 autumn, 白群 winter.
+- **Wallpaper**: ink-wash mountains under the sun (light palettes) or tonight's real moon phase.
 
-![Lock screen: ensō around the clock, date in kanji](docs/screenshots/lock.jpg)
+**Everyday tools**
+- **Launcher** (Super+Space): frequent apps first; Enter focuses an app that is already open.
+- **Shortcuts sheet** (Super+/): every bind, aligned in columns; click to run, type to search.
+- **Instant terminal**: a ghostty window in ~20 ms (`hypr-term`).
+- **Tabbed windows** (Super+T) as paper tabs; **one key per app** (Super+K Slack, Super+B browser…).
+- **Theme manager** (Super+Shift+T): six palettes, follow the sun.
 
-The rules behind the look: the accent only means "you are here" or "this is on" (never a border),
-surfaces are warm translucent paper with one hairline, and nothing moves while idle.
+**Everything in one palette**
+- GTK3 apps (Thunar first), Qt (qt6ct), ghostty, starship, btop, fzf, bat, delta, fuzzel, hyprlock,
+  wlogout, Shoji's own folder icons, and themes for **VS Code, Spotify (spicetify) and Chrome**.
+- **Six palettes**: 藍染 Aizome (indigo · gold, default), 夜 Yoru (ink · vermilion), 夜桜 Yozakura
+  (night · sakura), 苔 Koke (moss), 昼 Hiru (washi, light), 雪 Yuki (snow, light).
 
 ## Install
 
@@ -79,7 +97,25 @@ Optional: `ghostty` and `starship` (terminal colors and the `❯` prompt), `btop
 For the Koyomi agenda: `gir1.2-ecal-2.0` (Arch: `evolution-data-server`) plus `gnome-calendar`
 and GNOME Online Accounts for Google calendars and tasks. Without it the calendar shows no agenda.
 
-### Terminal tools (optional)
+### 2. Run the installer
+
+```sh
+git clone https://github.com/andriar/shoji ~/shoji
+~/shoji/install.sh            # or: ~/shoji/install.sh yoru
+```
+
+It backs up every file it replaces (`~/.local/share/shoji/backup-*.tar.gz`), downloads the fonts
+(Kaisei Opti, Zen Kaku Gothic New, Lucide), installs the scripts to `~/.local/bin`, generates
+the configs and applies a palette. It keeps your `starship.toml`; run with `SHOJI_PROMPT=1` to use
+the Shoji prompt.
+
+### 3. Add the Hyprland lines
+
+The installer does not touch your Hyprland config. Copy the block for your config format
+(Lua for 0.55+, or `hyprland.conf`) from [docs/hyprland.md](docs/hyprland.md): autostart, blur,
+window hairlines and the keys. Check it with `Hyprland --verify-config`, then log out and back in.
+
+### Optional: terminal tools
 
 `bat`, `delta` and `fzf` keep their own themes, so a dark theme like Catppuccin Mocha is unreadable
 on Hiru and Yuki. Point them at Shoji and they follow every palette switch:
@@ -102,25 +138,7 @@ writes white text, which disappears on Hiru and Yuki: run `/theme` and pick **Au
 (`"theme": "auto"` in `~/.claude/settings.json`). It reads the terminal background, so it follows
 every palette.
 
-### 2. Run the installer
-
-```sh
-git clone https://github.com/andriar/shoji ~/shoji
-~/shoji/install.sh            # or: ~/shoji/install.sh yoru
-```
-
-It backs up every file it replaces (`~/.local/share/shoji/backup-*.tar.gz`), downloads the fonts
-(Kaisei Opti, Zen Kaku Gothic New, Lucide), installs the scripts to `~/.local/bin`, generates
-the configs and applies a palette. It keeps your `starship.toml`; run with `SHOJI_PROMPT=1` to use
-the Shoji prompt.
-
-### 3. Add the Hyprland lines
-
-The installer does not touch your Hyprland config. Copy the block for your config format
-(Lua for 0.55+, or `hyprland.conf`) from [docs/hyprland.md](docs/hyprland.md): autostart, blur,
-window hairlines and the keys. Check it with `Hyprland --verify-config`, then log out and back in.
-
-### Thunar (optional)
+### Optional: Thunar
 
 Thunar opens in ~140 ms (Nautilus takes ~1 s cold) and ~45 ms with its daemon. For the Shoji look,
 use breadcrumbs and the ⋮ menu instead of the menu bar (Ctrl+M brings it back):
@@ -133,7 +151,7 @@ xdg-mime default thunar.desktop inode/directory   # folders from other apps open
 
 Start `thunar --daemon` at login and bind your file-manager key to `thunar`.
 
-### App themes (optional)
+### Optional: app themes
 
 Every `shoji apply` also writes themes for the apps you spend the day in. Turn each on once:
 
@@ -143,7 +161,7 @@ Every `shoji apply` also writes themes for the apps you spend the day in. Turn e
 | Spotify ([spicetify](https://spicetify.app)) | `shoji spotify`, then `spicetify apply` (restarts Spotify) | the colour scheme is set; run `spicetify apply` when convenient |
 | Chrome | `shoji chrome`: load the printed folder unpacked in chrome://extensions | press the extension's reload button |
 
-### Notification groups (optional)
+### Optional: notification stacks
 
 swaync 0.10+ stacks notifications per app (like iOS: one card, tap to expand). Ubuntu 24.04 ships
 0.9, so build 0.11.0, the last GTK3 release (0.12 needs GTK 4.16 and newer libraries than 24.04
@@ -172,20 +190,26 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 
 ## Use
 
-| | |
+| Keys | |
 |---|---|
-| `Super+Space` | app launcher (Enter = open or focus, Shift+Enter = new window) |
-| `Super+/` | cheat sheet of every shortcut (type to search) |
-| `Super+Enter` | terminal via `hypr-term` (instant once ghostty runs) |
-| `hypr-focus-or-launch` | bind a key per app: focus it if open (again = next window), start it if not |
-| click a workspace | switch to it (一 二 三 四) |
+| `Super+Space` · `Super+/` | launcher · every shortcut (type to search) |
+| `Super+Enter` · `Super+E` | terminal (instant) · Thunar |
+| `Super+N` or click the clock | Koyomi: calendar, agenda, toggles, notifications |
+| `Super+Z` | zazen: 25 minutes of focus (again = stop) |
+| `Super+T` · `Super+[` / `]` | tab windows · previous / next tab |
 | `Super+Shift+T` | theme manager |
-| click the clock | calendar, quick settings, notifications |
-| click / scroll the ensō in the bar | sound devices / volume |
+| `PrtSc` / `Super+Shift+P` | screenshot an area (`Super+Ctrl+P`: the screenshot menu) |
 | volume keys, keyboard knob | ensō OSD |
-| `shoji apply koke` | switch palette from a terminal |
-| `shoji list` · `shoji doctor` | palettes · contrast and font check |
-| `shoji wallpaper` | show the palette's ink-mountain wallpaper |
+
+| From a terminal | |
+|---|---|
+| `shoji apply koke` · `shoji list` | switch palette · list them |
+| `shoji doctor` | contrast and font check for the current palette |
+| `shoji vscode` · `shoji spotify` · `shoji chrome` | turn on an app theme (once) |
+| `shoji greet` · `shoji season` · `shoji moon` | today's 候 and what is next · the season · redraw the moon |
+
+Preferences live in `~/.config/shoji/prefs.json`: `"seasonal"`, `"follow_sun"`, `"greet"` (one dim
+line in new terminals), `"rin"` (false = no bell), `"numerals"` (`"kanji"` or `"arabic"`).
 
 ## Make your own palette
 
@@ -198,8 +222,11 @@ wallpaper sky and hills), then `shoji doctor <name>` to check contrast and `shoj
   hyprlock, ghostty, starship, btop, qt6ct, GTK 3/4 (with a full GTK3 layer for Thunar and friends),
   fzf, bat and delta colors, plus the wallpaper, ensō images and folder icons (cairo). `shoji apply`
   reloads everything that can reload and restarts Thunar on its folders.
-- `bin/hypr-widgets` — one small GTK3 layer-shell process (about 60 MB): ensō OSD, calendar card,
-  popovers, theme manager, launcher and the shortcuts sheet.
+- `bin/hypr-widgets` — one small GTK3 layer-shell process: ensō OSD, Koyomi, the popovers (Sound,
+  Network, Battery, Media, Theme), launcher, shortcuts sheet and the zazen ensō. It also brings a
+  clicked notification's window forward and keeps today's agenda cached for `shoji greet`.
+- `bin/shoji-media` (now playing, picks the playing player), `bin/shoji-zazen` (focus sessions),
+  `bin/shoji-ws` (workspace buttons, see below), `bin/hypr-sysload`, `bin/shoji-level`.
 - `bin/hypr-term` — opens a terminal as a D-Bus action on the running ghostty;
   `bin/hypr-focus-or-launch` — one key per app.
 - `generators/` — the waybar and swaync configs, generated so icons and buttons match what is
@@ -210,9 +237,10 @@ wallpaper sky and hills), then `shoji doctor <name>` to check contrast and `shoj
 
 ## Status
 
-Tested on Ubuntu 24.04 (Zorin OS 18) with Hyprland 0.56.2, waybar 0.14, swaync 0.9 and hyprlock
-0.9.6, including a clean-home install inside a nested Hyprland. Not yet tested: Arch and newer
-swaync (GTK4), multi-monitor, HiDPI scaling and real laptops. Issues and screenshots welcome.
+Tested on Ubuntu 24.04 (Zorin OS 18) with Hyprland 0.56.2, waybar 0.14, swaync 0.9 and 0.11, and
+hyprlock 0.9.6, including a clean-home install inside a nested Hyprland (the screenshots come from
+one, with demo data). Not yet tested: Arch, swaync 0.12 (GTK4), multi-monitor, HiDPI scaling and real
+laptops. Issues and screenshots welcome.
 
 ## License
 

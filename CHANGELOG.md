@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 — 2026-10-26
+
+- README: a tour of every surface, features grouped, the keys in one table. Screenshots taken in a
+  nested Hyprland with demo data (no private windows).
+- Koyomi opens on the focused monitor (it used to take the first one), and the card shrinks back
+  to the panel's height after the agenda loads.
+- Koyomi's two halves fade in together.
+
 ## 0.2.0 — 2026-10-26
 
 The zen release: a design pass argued out between three design reviews, a calmer bar, the Koyomi

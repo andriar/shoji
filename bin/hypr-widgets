@@ -792,6 +792,9 @@ class Calendar:
             more.connect("clicked", lambda _b: self.open_day())
             self.rows.pack_start(more, False, False, 0)
         self.rows.show_all()
+        # a GTK window grows with its content but never shrinks back on its own; the card must keep
+        # the swaync panel's height (sources answering one by one briefly made it taller)
+        self.win.resize(self.WIDTH, 1)
 
     TOGGLES = [("network", "Network"), ("bluetooth", "Bluetooth · right-click: devices"),
                ("night", "Night light"), ("silent", "Silent (do not disturb)"), ("awake", "Keep awake"),
@@ -874,15 +877,22 @@ class Calendar:
         self.selected = today
         self.load()
         self.refresh_toggles()
-        mon = Gdk.Display.get_default().get_monitor(0)
-        if mon:
-            Layer.set_monitor(self.win, mon)
-            half = mon.get_geometry().width // 2
-            Layer.set_margin(self.win, Layer.Edge.LEFT, max(0, half - self.WIDTH))
+        # no output set: Hyprland puts the card on the focused monitor, where swaync opens too
+        Layer.set_margin(self.win, Layer.Edge.LEFT, max(0, self.focused_width() // 2 - self.WIDTH))
         self.win.show()
 
     def hide(self):
         self.win.hide()
+
+    @staticmethod
+    def focused_width():
+        """Logical width of the focused monitor (the same one gen_swaync measures)."""
+        try:
+            mons = json.loads(sh("hyprctl", "monitors", "-j") or "[]")
+            m = next((m for m in mons if m.get("focused")), mons[0])
+            return round(m["width"] / m.get("scale", 1))
+        except (ValueError, IndexError, KeyError):
+            return 2560
 
 
 # ---------------------------------------------------------------- popovers
