@@ -246,10 +246,19 @@ class Meetings:
     - 静 Silent turns itself on while an event is running or the screen is being shared (Hyprland's
       screencast event), and off afterwards, with one note of how many notifications waited. If
       Silent was already on by hand, it is left alone. prefs "auto_silent": false turns this off.
-    - a reminder card 10 minutes before each timed event."""
+    - a reminder card 10 minutes before each timed event.
+    Whether Silent is ours is kept in OURS, so a restart of hypr-widgets mid-meeting still turns it
+    off afterwards (and does not leave it on for good)."""
+    OURS = RUN / "shoji-silent.json"
 
     def __init__(self, today):
         self.today, self.reasons, self.ours, self.held_from = today, set(), False, 0
+        try:
+            kept = json.loads(self.OURS.read_text())
+            self.ours, self.held_from = bool(kept["ours"]), int(kept["held_from"])
+            self.reasons = {"restart"} if self.ours else set()   # dropped after the first tick
+        except (OSError, ValueError, KeyError):
+            pass
         self.reminded = set()
         self.card = ReminderCard()
         self.shimai = Shimai(today, self)
@@ -266,6 +275,7 @@ class Meetings:
         self.shimai.tick(now)
         self.set("batch", bool(self.batch.minutes()))
         self.batch.tick(now)
+        self.set("restart", False)   # every real reason has had its say
         for i in timed:
             key = (i["uid"], i["when"])
             if hm < i["when"] <= soon and key not in self.reminded:
@@ -284,14 +294,22 @@ class Meetings:
             self.held_from = int(sh("swaync-client", "-c") or 0)
             sh("swaync-client", "-dn")
             self.ours = True
+            self.keep()
         elif self.ours:
             self.ours = False
+            self.keep()
             if sh("swaync-client", "-D") == "true":
                 sh("swaync-client", "-df")
             held = max(0, int(sh("swaync-client", "-c") or 0) - self.held_from)
             if held:
                 spawn("notify-send", "-a", "Shoji", "-u", "low", "静 · Silent is off again",
                       f"{held} notification{'s' * (held != 1)} waited while you were busy.")
+
+    def keep(self):
+        try:
+            self.OURS.write_text(json.dumps({"ours": self.ours, "held_from": self.held_from}))
+        except OSError:
+            pass
 
 
 class Batch(ReminderCard):
@@ -503,13 +521,54 @@ class Zazen:
         cr.set_line_width(1)
         cr.stroke()
         total = self.state["minutes"] * 60
-        resting = self.state.get("phase") == "rest"  # the 休 after a session: quieter, no number
+        resting = self.state.get("phase") in ("rest", "look")  # 休 after a session, 遠 for the eyes: quieter
         enso(cr, c, c, c - 9, 1 - max(0, self.left()) / total, rgba(t["muted"] if resting else t["accent"]), 3.2,
              track=rgba(t["text"], 0.10))
-        mins = "休" if resting else max(0, math.ceil(self.left() / 60))
+        mins = self.state.get("mark") or ("休" if resting else max(0, math.ceil(self.left() / 60)))
         lay = PangoCairo.create_layout(cr)
         lay.set_markup(f'<span font_family="Kaisei Opti" weight="bold" size="12pt" foreground="{t["text"]}">{mins}</span>', -1)
         w, h = lay.get_pixel_size()
         cr.move_to(c - w / 2, c - h / 2)
         PangoCairo.show_layout(cr, lay)
         return False
+
+
+class EyeRest(Zazen):
+    """遠 20-20-20 (prefs "eye_rest"): after 20 minutes at the screen, the zazen ensō asks you to look
+    at something far away for 20 seconds, closing as they pass. Time away (the ink screen, the lock)
+    starts the 20 minutes again; a zazen session, a meeting or a shared screen puts it off."""
+    STATE = RUN / "shoji-eyes.json"   # never written: nothing to pick up after a restart
+    EVERY_S, LOOK_S = 20 * 60, 20
+
+    def __init__(self, meetings):
+        super().__init__()
+        self.meetings, self.since = meetings, time.time()
+        GLib.timeout_add_seconds(30, self.watch)
+
+    def away(self):
+        return (RUN / "shoji-ink.pid").exists() or sh("pidof", "hyprlock") != ""
+
+    def due(self, now):
+        if not prefs().get("eye_rest") or self.away():
+            self.since = now
+            return False
+        busy = Zazen.STATE.exists() or bool(self.meetings.reasons & {"meeting", "screen"})
+        return not self.state and not busy and now - self.since >= self.EVERY_S
+
+    def watch(self):
+        now = time.time()
+        if self.due(now):
+            self.since = now
+            self.state = {"minutes": self.LOOK_S / 60, "start": now, "phase": "look", "mark": "遠"}
+            self.win.show()
+            if not self.ticking:
+                self.ticking = True
+                GLib.timeout_add_seconds(1, self.tick)
+        return True
+
+    def tick(self):
+        if self.state and self.left() <= 0:
+            self.ticking = False
+            self.stop()
+            return False
+        return super().tick()

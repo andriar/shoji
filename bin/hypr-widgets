@@ -174,7 +174,9 @@ def main():
     watch_fifo(Osd(), pops, Zazen(), ShotCard())
     watch_swaync(Calendar())
     today = TodayCache()
-    focus = NotifyFocus(Meetings(today))  # noqa: F841  (kept alive for its signal and socket)
+    meetings = Meetings(today)
+    focus = NotifyFocus(meetings)  # noqa: F841  (kept alive for its signal and socket)
+    eyes = EyeRest(meetings)  # noqa: F841
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, 15, Gtk.main_quit)  # SIGTERM
     try:
         Gtk.main()

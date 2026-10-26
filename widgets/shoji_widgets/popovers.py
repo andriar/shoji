@@ -1570,6 +1570,7 @@ class Preferences(Popover):
         ("auto_silent", "Quiet in meetings", "Silent while an event runs or the screen is shared", True),
         ("rin", "Rin bell", "A soft bell for critical notifications and reminders", True),
         ("greet", "Terminal greeting", "Today's 候 and what is next, in each new terminal", False),
+        ("eye_rest", "Rest your eyes", "Every 20 minutes, look at something far away for 20 seconds", False),
     ]
     CHOICES = [  # key, title, [(value, label)], default
         ("lang", "Language", [("en", "English"), ("id", "Indonesia"), ("ja", "日本語")], "en"),

@@ -107,6 +107,7 @@ class Meetings(unittest.TestCase):
         shown = []
         m.today = type("T", (), {"items": lambda _s: items})()
         m.reasons, m.ours, m.held_from, m.reminded = set(), False, 0, set()
+        m.OURS = Path(tempfile.mkdtemp()) / "silent.json"
         m.card = type("C", (), {"show": lambda _s, i: shown.append(i["title"])})()
         m.shimai = type("S", (), {"resting": lambda _s: False, "tick": lambda _s, now: None})()
         m.batch = type("B", (), {"minutes": lambda _s: 0, "tick": lambda _s, now: None})()
@@ -133,6 +134,17 @@ class Meetings(unittest.TestCase):
         m.set("screen", False)
         self.assertFalse(self.dnd["on"])
         self.assertIn("4 notifications waited", self.calls[-1][-1])
+
+    def test_a_restart_still_turns_our_silent_off(self):
+        m, _ = self.meetings([])
+        m.set("meeting", True)
+        self.assertTrue(self.dnd["on"])
+        again, _ = self.meetings([])   # hypr-widgets restarted mid-meeting, and the meeting ended
+        again.OURS = m.OURS
+        kept = json.loads(m.OURS.read_text())
+        again.ours, again.held_from, again.reasons = kept["ours"], kept["held_from"], {"restart"}
+        again.tick()
+        self.assertFalse(self.dnd["on"])
 
     def test_silent_by_hand_is_left_alone(self):
         self.dnd["on"] = True
@@ -382,6 +394,34 @@ class Slack(unittest.TestCase):
         first = out.getvalue().splitlines()[0]
         t = shoji.tokens(shoji.current())
         self.assertEqual(first, ", ".join(t[k].upper() for k in ("base", "accent", "ok", "alert")))
+
+
+class EyeRest(unittest.TestCase):
+    def make(self, on=True, away=False, reasons=()):
+        from unittest import mock
+        from shoji_widgets import overlays
+        e = object.__new__(overlays.EyeRest)
+        e.state, e.since = None, 0.0
+        e.meetings = type("M", (), {"reasons": set(reasons)})()
+        e.away = lambda: away
+        for patch in (mock.patch.object(overlays, "prefs", return_value={"eye_rest": on}),
+                      mock.patch.object(overlays.Zazen, "STATE", Path(tempfile.mkdtemp()) / "none.json")):
+            patch.start()
+            self.addCleanup(patch.stop)
+        return e
+
+    def test_after_twenty_minutes_at_the_screen(self):
+        e = self.make()
+        self.assertFalse(e.due(19 * 60))
+        self.assertTrue(e.due(20 * 60))
+
+    def test_time_away_starts_again_and_meetings_put_it_off(self):
+        e = self.make(away=True)
+        self.assertFalse(e.due(30 * 60))
+        self.assertEqual(e.since, 30 * 60)
+        self.assertFalse(self.make(reasons={"meeting"}).due(30 * 60))
+        self.assertTrue(self.make(reasons={"batch"}).due(30 * 60))   # batches keep Silent on all day
+        self.assertFalse(self.make(on=False).due(30 * 60))
 
 
 if __name__ == "__main__":

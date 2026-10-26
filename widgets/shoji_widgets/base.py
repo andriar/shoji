@@ -123,6 +123,8 @@ STRINGS = {  # English text -> (Indonesian, Japanese)
     "通 · WHAT CAME IN": ("通 · YANG MASUK", "通 · 届いたもの"),
     "{n} notifications waited": ("{n} notifikasi menunggu", "通知 {n} 件が待っています"),
     "Open the panel": ("Buka panel", "パネルを開く"), "Later": ("Nanti", "あとで"),
+    "Rest your eyes": ("Istirahatkan mata", "目を休める"),
+    "Every 20 minutes, look at something far away for 20 seconds": ("Tiap 20 menit, lihat jauh selama 20 detik", "20 分ごとに 20 秒、遠くを見る"),
     "Kept in ~/.config/shoji/prefs.json": ("Disimpan di ~/.config/shoji/prefs.json", "~/.config/shoji/prefs.json に保存"),
     "Fully charged": ("Terisi penuh", "充電完了"), "Charging": ("Mengisi daya", "充電中"),
     "Battery low": ("Baterai lemah", "バッテリー残量低下"), "On battery": ("Pakai baterai", "バッテリー駆動"),
