@@ -40,11 +40,21 @@ hl.layer_rule({ name = "shoji-pop", match = { namespace = "^hypr-pop$" }, animat
 -- so a slide would move it ~1400 px against the calendar's ~480 px and they would arrive apart
 hl.layer_rule({ name = "shoji-cal", match = { namespace = "^hypr-calendar$" }, animation = "fade" })
 hl.layer_rule({ name = "shoji-panel", match = { namespace = "^swaync-control-center$" }, animation = "fade" })
--- windows ease out, no spring overshoot (calm, nothing bounces)
+-- Shoji's motion scale (speed 1 = 100 ms), the same steps hypr-widgets, waybar and swaync use:
+-- state 150 ms, content and shell surfaces 180 ms, space (windows, workspaces) 320 ms; all ease
+-- out, no springs, nothing overshoots
 hl.curve("easeOutQuint", { type = "bezier", points = { {0.23, 1}, {0.32, 1} } })
-hl.animation({ leaf = "windows",     enabled = true, speed = 4.8, bezier = "easeOutQuint" })
-hl.animation({ leaf = "windowsIn",   enabled = true, speed = 4.1, bezier = "easeOutQuint", style = "popin 90%" })
-hl.animation({ leaf = "windowsMove", enabled = true, speed = 4.5, bezier = "easeOutQuint" })
+hl.animation({ leaf = "border",           enabled = true, speed = 1.5, bezier = "easeOutQuint" })
+hl.animation({ leaf = "windows",          enabled = true, speed = 3.2, bezier = "easeOutQuint" })
+hl.animation({ leaf = "windowsIn",        enabled = true, speed = 3.2, bezier = "easeOutQuint", style = "popin 90%" })
+hl.animation({ leaf = "windowsOut",       enabled = true, speed = 1.5, bezier = "linear",       style = "popin 90%" })
+hl.animation({ leaf = "windowsMove",      enabled = true, speed = 3.2, bezier = "easeOutQuint" })
+hl.animation({ leaf = "layers",           enabled = true, speed = 1.8, bezier = "easeOutQuint" })
+hl.animation({ leaf = "layersIn",         enabled = true, speed = 1.8, bezier = "easeOutQuint", style = "fade" })
+hl.animation({ leaf = "layersOut",        enabled = true, speed = 1.5, bezier = "linear",       style = "fade" })
+hl.animation({ leaf = "fade",             enabled = true, speed = 1.8, bezier = "easeOutQuint" })
+hl.animation({ leaf = "workspaces",       enabled = true, speed = 3.2, bezier = "easeOutQuint", style = "slidefade 15%" })
+hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 3.2, bezier = "easeOutQuint", style = "slidefadevert 25%" })
 -- toasts slide in through swaync CSS; Hyprland's layer animation stretches the stack when it resizes
 hl.layer_rule({ name = "shoji-toasts", match = { namespace = "^swaync-notification-window$" }, no_anim = true })
 

@@ -74,3 +74,12 @@
          void scroll_animation_value_cb (double progress) {
              this.scroll_animation_progress = progress;
  
+--- a/src/constants.vala.in
++++ b/src/constants.vala.in
+@@ -1,5 +1,5 @@
+ public class Constants {
+     public const string VERSION = @VERSION@;
+     public const string VERSIONNUM = @VERSION_NUM@;
+-    public const uint ANIMATION_DURATION = 400;
++    public const uint ANIMATION_DURATION = 180;  // Shoji: the 180 ms content step
+ }

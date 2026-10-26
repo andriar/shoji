@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.2 — 2026-10-26
+
+- One motion scale across Shoji: state 150 ms, content 180 ms, space 320 ms, all easing out
+  (hypr-widgets, waybar, swaync, the documented Hyprland animations; no springs).
+- Hover and selection fade; the launcher, shortcuts search and notification list glide on the
+  mouse wheel; the Koyomi month slides and the agenda crossfades; the Media seek bar runs smoothly
+  and play/pause no longer rebuilds the popover.
+- Toasts fade through swaync itself; the CSS slide that replayed on the next toast is gone.
+- swaync patch (docs/patches/swaync-0.11.0-shoji-motion.patch): wheel glide plus 180 ms group
+  animations.
+
 ## 0.2.1 — 2026-10-26
 
 - README: a tour of every surface, features grouped, the keys in one table. Screenshots taken in a

@@ -173,14 +173,15 @@ curl -L https://github.com/ErikReider/SwayNotificationCenter/archive/refs/tags/v
 cd SwayNotificationCenter-0.11.0
 meson setup build --prefix=/usr/local -Dsystemd-service=false -Dman-pages=false \
   -Dzsh-completions=false -Dbash-completions=false -Dfish-completions=false
-patch -p1 < ~/shoji/docs/patches/swaync-0.11.0-smooth-wheel.patch   # optional: the wheel glides
+patch -p1 < ~/shoji/docs/patches/swaync-0.11.0-shoji-motion.patch   # optional: Shoji's motion
 ninja -C build && sudo ninja -C build install    # undo: sudo ninja -C build uninstall
 pkill -x swaync; swaync &                         # restarting clears current notifications
 ```
 
 Shoji's swaync theme styles the stacks (an opaque fill for collapsed cards, so the ones behind
-do not show through). The optional patch makes the mouse wheel glide through the list (ease-out,
-180 ms per notch, quick notches add up) instead of jumping; touchpads keep GTK's own scrolling.
+do not show through). The optional patch puts swaync on Shoji's motion scale: the mouse wheel glides through the list
+(ease-out, 180 ms per notch, quick notches add up) instead of jumping, and group animations take
+180 ms instead of 400. Touchpads keep GTK's own scrolling.
 
 ### Uninstall
 
@@ -231,6 +232,9 @@ wallpaper sky and hills), then `shoji doctor <name>` to check contrast and `shoj
   `bin/shoji-ws` (workspace buttons, see below), `bin/hypr-sysload`, `bin/shoji-level`.
 - `bin/hypr-term` — opens a terminal as a D-Bus action on the running ghostty;
   `bin/hypr-focus-or-launch` — one key per app.
+- **Motion**: one scale everywhere: state changes 150 ms, content that moves (scrolling, slides,
+  crossfades, toasts, shell surfaces) 180 ms, windows and workspaces 320 ms, all easing out with
+  no springs. Hover and selection fade, the mouse wheel glides, the Koyomi month slides.
 - `generators/` — the waybar and swaync configs, generated so icons and buttons match what is
   installed.
 - `bin/shoji-ws` — workspace buttons for waybar. Its `hyprland/workspaces` module switches with

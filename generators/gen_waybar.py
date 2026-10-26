@@ -102,7 +102,7 @@ cfg = {
     },
     # app tray icons stay tucked away: hover the dots to slide them out
     "group/tray": {"orientation": "inherit", "modules": ["custom/traydots", "tray"],
-                   "drawer": {"transition-duration": 220, "transition-left-to-right": False,
+                   "drawer": {"transition-duration": 180, "transition-left-to-right": False,
                               "children-class": "tray-item"}},
     "custom/traydots": {"format": L("ellipsis"), "tooltip-format": "App icons — hover to show"},
     "tray": {"spacing": 8, "icon-size": 16},

@@ -58,7 +58,9 @@ LUCIDE = json.loads((HOME / ".local/share/fonts/Shoji/lucide-info.json").read_te
 CC_WIDTH = 420      # swaync control-center-width
 GAP = 8
 OSD_MS = 1400
-OSD_TWEEN_MS = 240
+# one motion scale for Shoji: state changes 150 ms, content that moves 180 ms (ease-out)
+STATE_MS, CONTENT_MS = 150, 180
+OSD_TWEEN_MS = CONTENT_MS
 WEEK_K = "日月火水木金土"  # Sunday first, like the calendar grid
 AGENDA_ROWS = 4     # agenda lines under the grid; the card keeps one height (gen_swaync CAL_HEIGHT)
 
@@ -114,10 +116,10 @@ CSS = b"""
   padding: 14px;
   color: @text;
 }
-/* every state change eases (hover, selection, a toggle turning on) instead of snapping */
+/* every state change eases (hover, selection, a toggle turning on): STATE_MS */
 button, .row, .app-row, .key-row, .sheet-row, .chip, .toggle, .day, .agenda-row, .nav, .card, .link {
-  transition: background-color 140ms ease-out, color 140ms ease-out, box-shadow 140ms ease-out,
-              border-color 140ms ease-out;
+  transition: background-color 150ms ease-out, color 150ms ease-out, box-shadow 150ms ease-out,
+              border-color 150ms ease-out;
 }
 .muted { color: @muted; }
 .label-small { color: @muted; font-size: 10.5px; letter-spacing: 1px; }
@@ -276,7 +278,7 @@ class Glide:
     """Eases a scrolled window's vertical position, like Shoji's swaync patch: a wheel notch or a
     keyboard step moves a target, the view follows in 180 ms (ease-out cubic), and quick notches add
     up instead of restarting. Touchpads keep GTK's own scrolling, which is already smooth."""
-    STEP, MS = 96, 180
+    STEP, MS = 96, CONTENT_MS
 
     def __init__(self, scrolled):
         self.sw, self.adj = scrolled, scrolled.get_vadjustment()
@@ -715,7 +717,7 @@ class Calendar:
             weekdays.attach(label(k, "wk", xalign=0.5), i, 0, 1, 1)
         month.pack_start(weekdays, False, False, 0)
         self.grid_pages = [Gtk.Grid(column_homogeneous=True, row_spacing=2) for _ in range(2)]
-        self.grid_stack = Gtk.Stack(transition_duration=220, hhomogeneous=True, vhomogeneous=True)
+        self.grid_stack = Gtk.Stack(transition_duration=CONTENT_MS, hhomogeneous=True, vhomogeneous=True)
         for i, g in enumerate(self.grid_pages):
             self.grid_stack.add_named(g, f"m{i}")
         month.pack_start(self.grid_stack, False, False, 0)
@@ -738,7 +740,7 @@ class Calendar:
                 head.pack_start(b, False, False, 0)
             box.pack_start(head, False, False, 0)
             self.row_pages = [Gtk.Box(orientation=Gtk.Orientation.VERTICAL) for _ in range(2)]
-            self.row_stack = Gtk.Stack(transition_duration=160, vhomogeneous=True,
+            self.row_stack = Gtk.Stack(transition_duration=CONTENT_MS, vhomogeneous=True,
                                        transition_type=Gtk.StackTransitionType.CROSSFADE)
             for i, r in enumerate(self.row_pages):
                 r.set_size_request(-1, AGENDA_ROWS * 24)

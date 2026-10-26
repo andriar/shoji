@@ -40,7 +40,7 @@ cfg = {
   # False: with True swaync grabs the keyboard exclusively, and Hyprland then sends clicks only to
   # it, so Koyomi's buttons and days never got them (the click closed the panel instead)
   "keyboard-shortcuts": False, "image-visibility": "when-available",
-  "transition-time": 200, "hide-on-clear": False, "hide-on-action": True,
+  "transition-time": 180, "hide-on-clear": False, "hide-on-action": True,
   "script-fail-notify": True,
   "notification-visibility": {
     "osd": {"state": "transient", "app-name": "^OSD$"},
@@ -189,16 +189,8 @@ progressbar { margin-top: 6px; }
 progressbar trough { min-height: 4px; border-radius: 2px; background: @track; }
 progressbar progress { min-height: 4px; border-radius: 2px; background: @accent; }
 .widget-dnd, .widget-inhibitors { margin: 4px 8px; color: @text; }
-/* toasts: the newest slides in from the right edge. Hyprland's own layer animation (no_anim for
-   swaync-notification-window) stretched the stack whenever it grew or shrank. Margins add up to
-   16px in every frame, so the text never rewraps. */
-@keyframes toast-in {
-  from { opacity: 0; margin-left: 32px; margin-right: -16px; }
-  to   { opacity: 1; margin-left: 8px;  margin-right: 8px; }
-}
-.floating-notifications .notification-row:first-child .notification {
-  animation: toast-in 300ms cubic-bezier(0.23, 1, 0.32, 1);
-}
+/* toasts fade in and out through swaync itself (transition-time, Shoji's 180 ms content step).
+   A CSS slide on the first toast used to replay on the next one whenever the top one closed. */
 '''
 (D / "style.css").write_text(css)
 print("ok")
