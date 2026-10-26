@@ -110,12 +110,12 @@ class Sound(Popover):
         vol = round(float(vol_line[1]) * 100) if len(vol_line) > 1 else 0
         muted = "[MUTED]" in vol_line
 
-        mute = Gtk.Button(label="Unmute" if muted else "Mute")
+        mute = Gtk.Button(label=T("Unmute" if muted else "Mute"))
         mute.get_style_context().add_class("chip")
         if muted:
             mute.get_style_context().add_class("on")
         mute.connect("clicked", lambda *_: (sh("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"), self.refresh()))
-        self.header("Sound", mute)
+        self.header(T("Sound"), mute)
 
         line = Gtk.Box(spacing=8)
         scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
@@ -135,12 +135,12 @@ class Sound(Popover):
         self.box.pack_start(line, False, False, 0)
 
         for kind, k, title in (("out", out_k, "OUTPUT"), ("in", in_k, "INPUT")):
-            self.box.pack_start(label(title, "label-small"), False, False, 4)
+            self.box.pack_start(label(T(title), "label-small"), False, False, 4)
             current = sh("pactl", k["get"])
             for dev in AUDIO.devices(k):
                 self.row(self.device_icon(dev, kind), AUDIO.label(dev, kind)[3:], dev["name"] == current,
                          lambda d=dev, kd=kind: self.pick(d, kd))
-        self.footer("Sound settings…", ["pavucontrol"])
+        self.footer(T("Sound settings…"), ["pavucontrol"])
 
     def pick(self, dev, kind):
         k = AUDIO.KINDS[kind]
@@ -169,7 +169,7 @@ class Network(Popover):
             sw.set_valign(Gtk.Align.CENTER)
             sw.connect("notify::active", lambda s, _p: (sh("nmcli", "radio", "wifi", "on" if s.get_active() else "off"),
                                                          GLib.timeout_add(800, self.refresh_once)))
-        self.header("Network", sw)
+        self.header(T("Network"), sw)
         for line in sh("nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active").splitlines():
             parts = line.split(":")
             if len(parts) < 3 or parts[1] in ("loopback", "bridge") or parts[2].startswith(("docker", "br-", "veth", "lo")):
@@ -186,7 +186,7 @@ class Network(Popover):
                 seen.add(ssid)
                 meta = f"{signal}%" + (" · secured" if sec else "")
                 self.row(icon("wifi"), ssid, inuse == "*", lambda s=ssid, secured=bool(sec): self.connect_to(s, secured), meta)
-        self.footer("Network settings…", ["nm-connection-editor"])
+        self.footer(T("Network settings…"), ["nm-connection-editor"])
 
     def connect_to(self, ssid, secured):
         known = ssid in sh("nmcli", "-t", "-f", "NAME", "connection", "show").splitlines()
@@ -238,12 +238,12 @@ class Bluetooth(Popover):
         if on:
             devices = self.devices()
             if not devices:
-                self.box.pack_start(label("No paired devices", "muted"), False, False, 6)
+                self.box.pack_start(label(T("No paired devices"), "muted"), False, False, 6)
             for d in devices:
                 meta = (f"{d['battery']}%" if d["battery"] else "") if d["connected"] else ""
                 self.row(icon(self.ICONS.get(d["icon"], "bluetooth")), d["name"], d["connected"],
                          lambda dev=d: self.toggle(dev), meta)
-        self.footer("Bluetooth settings…", ["blueman-manager"])
+        self.footer(T("Bluetooth settings…"), ["blueman-manager"])
 
     def toggle(self, dev):
         spawn("bluetoothctl", "disconnect" if dev["connected"] else "connect", dev["mac"])
@@ -335,8 +335,8 @@ class ThemeManager(Popover):
         seal = label("色", "seal", xalign=0.5)
         head.pack_start(seal, False, False, 0)
         tb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        tb.pack_start(label("Theme", "title"), False, False, 0)
-        tb.pack_start(label("Bar, panels, launcher, lock screen, terminal, GTK apps and wallpaper.", "muted"), False, False, 0)
+        tb.pack_start(label(T("Theme"), "title"), False, False, 0)
+        tb.pack_start(label(T("Bar, panels, launcher, lock screen, terminal, GTK apps and wallpaper."), "muted"), False, False, 0)
         head.pack_start(tb, True, True, 0)
         close = Gtk.Button(label=icon("x"))
         close.get_style_context().add_class("nav")
@@ -358,11 +358,11 @@ class ThemeManager(Popover):
             line = Gtk.Box(spacing=6)
             line.pack_start(label(f"{p['kanji']} {p['name']}", "name"), False, False, 0)
             line.pack_start(label(p["note"], "label-small"), False, False, 0)
-            line.pack_end(label("in use" if pid == cur else ("dark" if p["dark"] else "light"), "label-small", xalign=1), False, False, 0)
+            line.pack_end(label(T("in use") if pid == cur else T("dark" if p["dark"] else "light"), "label-small", xalign=1), False, False, 0)
             if p.get("user"):
                 drop = Gtk.Button(label=icon("x"))
                 drop.get_style_context().add_class("nav")
-                drop.set_tooltip_text("Remove this palette")
+                drop.set_tooltip_text(T("Remove this palette"))
                 drop.connect("clicked", lambda *_, n=pid: self.remove(n))
                 line.pack_end(drop, False, False, 0)
             v.pack_start(line, False, False, 0)
@@ -373,8 +373,8 @@ class ThemeManager(Popover):
         new.get_style_context().add_class("card")
         nv = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, valign=Gtk.Align.CENTER)
         nv.pack_start(label(icon("plus"), "icon", xalign=0.5), False, False, 0)
-        nv.pack_start(label("Your own", "name", xalign=0.5), False, False, 0)
-        nv.pack_start(label("a ground and an accent", "label-small", xalign=0.5), False, False, 0)
+        nv.pack_start(label(T("Your own"), "name", xalign=0.5), False, False, 0)
+        nv.pack_start(label(T("a ground and an accent"), "label-small", xalign=0.5), False, False, 0)
         new.add(nv)
         new.connect("clicked", lambda *_: self.edit({"name": "", "bg": "#1c1b19", "accent": "#eb6101"}))
         n = len(pals)
@@ -387,11 +387,15 @@ class ThemeManager(Popover):
         sw.set_valign(Gtk.Align.CENTER)
         sw.connect("notify::active", lambda s, _p: (save_prefs(follow_sun=s.get_active()), self.manager.sun_tick(force=True)))
         opts.pack_start(sw, False, False, 0)
-        opts.pack_start(label("Follow the sun: light palette 06:00–18:00, your dark one after", "muted"), False, False, 0)
+        opts.pack_start(label(T("Follow the sun: light palette 06:00–18:00, your dark one after"), "muted"), False, False, 0)
         num = Gtk.Button(label="一二三 → 123" if pr.get("numerals", "kanji") == "kanji" else "123 → 一二三")
         num.get_style_context().add_class("chip")
         num.connect("clicked", lambda *_: self.toggle_numerals())
         opts.pack_end(num, False, False, 0)
+        lang = Gtk.Button(label=f"{T('Language')} · {LANGS.get(LANG['code'], 'English')}")
+        lang.get_style_context().add_class("chip")
+        lang.connect("clicked", lambda *_: self.next_language())
+        opts.pack_end(lang, False, False, 0)
         self.box.pack_start(opts, False, False, 4)
         season = (sh(SHOJI, "season").split() + ["", "", ""])[:3]
         seas = Gtk.Box(spacing=10)
@@ -399,10 +403,10 @@ class ThemeManager(Popover):
         sw2.set_valign(Gtk.Align.CENTER)
         sw2.connect("notify::active", lambda s, _p: self.set_seasonal(s.get_active(), season[0]))
         seas.pack_start(sw2, False, False, 0)
-        seas.pack_start(label(f"Seasonal accent: 紅梅 spring · 青竹 summer · 紅葉 autumn · 白群 winter "
-                              f"(now {season[1]})", "muted"), False, False, 0)
+        seas.pack_start(label(T("Seasonal accent: 紅梅 spring · 青竹 summer · 紅葉 autumn · 白群 winter (now {s})").format(s=season[1]),
+                              "muted"), False, False, 0)
         self.box.pack_start(seas, False, False, 0)
-        self.box.pack_start(label(f"Same from a terminal: shoji apply {cur} · shoji list · Super+Shift+T", "mono"), False, False, 2)
+        self.box.pack_start(label(T("Same from a terminal: {cmd}").format(cmd=f"shoji apply {cur} · shoji list · Super+Shift+T"), "mono"), False, False, 2)
 
     # ---- your own palette
     def edit(self, draft):
@@ -447,7 +451,7 @@ class ThemeManager(Popover):
         prev.set_size_request(250, 140)
         top.pack_start(prev, False, False, 0)
         info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        self.name_entry = Gtk.Entry(placeholder_text="Name it (e.g. Sumi)", text=d["name"])
+        self.name_entry = Gtk.Entry(placeholder_text=T("Name it (e.g. Sumi)"), text=d["name"])
         self.name_entry.connect("changed", lambda e: self.draft.update(name=e.get_text()))
         info.pack_start(self.name_entry, False, False, 0)
         c = self.mod.contrast
@@ -463,10 +467,10 @@ class ThemeManager(Popover):
         self.box.pack_start(self.swatches("GROUND", self.GROUNDS, "bg"), False, False, 2)
         self.box.pack_start(self.swatches("ACCENT", self.ACCENTS, "accent"), False, False, 2)
         buttons = Gtk.Box(spacing=8, halign=Gtk.Align.END)
-        cancel = Gtk.Button(label="Cancel")
+        cancel = Gtk.Button(label=T("Cancel"))
         cancel.get_style_context().add_class("chip")
         cancel.connect("clicked", lambda *_: self.edit_done())
-        save = Gtk.Button(label="Save & apply")
+        save = Gtk.Button(label=T("Save & apply"))
         save.get_style_context().add_class("chip")
         save.get_style_context().add_class("on")
         save.set_sensitive(self.passes)
@@ -517,6 +521,11 @@ class ThemeManager(Popover):
     def set_seasonal(self, on, season_id):
         save_prefs(seasonal=on, season=season_id)
         subprocess.run([SHOJI, "apply"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.show()
+
+    def next_language(self):
+        codes = list(LANGS)
+        save_prefs(lang=codes[(codes.index(LANG["code"]) + 1) % len(codes)] if LANG["code"] in codes else "id")
         self.show()
 
     def toggle_numerals(self):
@@ -573,11 +582,11 @@ class Battery(Popover):
         words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         words.set_valign(Gtk.Align.CENTER)
         if bat:
-            head = ("Fully charged" if bat[1] == "Full" else "Charging") if charging else \
-                   ("Battery low" if low else "On battery")
+            head = T(("Fully charged" if bat[1] == "Full" else "Charging") if charging else
+                     ("Battery low" if low else "On battery"))
             detail = (f"{'Full' if charging else 'Empty'} in about {bat[2]}" if bat[2] else bat[1].lower())
         else:
-            head, detail = "No battery", "Desktop on mains power"
+            head, detail = T("No battery"), T("Desktop on mains power")
         words.pack_start(label(head, "title"), False, False, 0)
         words.pack_start(label(detail, "muted"), False, False, 0)
         top.pack_start(words, True, True, 0)
@@ -585,7 +594,7 @@ class Battery(Popover):
 
         current = sh("powerprofilesctl", "get")
         if current:
-            self.box.pack_start(label("POWER MODE", "label-small"), False, False, 4)
+            self.box.pack_start(label(T("POWER MODE"), "label-small"), False, False, 4)
             seg = Gtk.Box(spacing=4, homogeneous=True)
             for mode, name, _hint in self.MODES:
                 b = Gtk.Button(label=name)
@@ -599,7 +608,7 @@ class Battery(Popover):
             hl = label(hint, "muted")
             hl.set_line_wrap(True)
             self.box.pack_start(hl, False, False, 2)
-        self.footer("Power settings…", ["gnome-control-center", "power"])
+        self.footer(T("Power settings…"), ["gnome-control-center", "power"])
 
     def refresh(self):
         self.clear()
@@ -633,7 +642,7 @@ class Launcher(Popover):
         super().__init__(manager, anchor_right=False)
         Layer.set_margin(self.win, Layer.Edge.TOP, 120)
         Layer.set_keyboard_mode(self.win, Layer.KeyboardMode.EXCLUSIVE)
-        self.entry = Gtk.Entry(placeholder_text="Search apps")
+        self.entry = Gtk.Entry(placeholder_text=T("Search apps"))
         self.entry.get_style_context().add_class("search")
         self.entry.connect("changed", lambda *_: self.refilter())
         self.entry.connect("activate", lambda *_: self.launch_selected())
@@ -766,8 +775,8 @@ class Launcher(Popover):
         self.listbox.invalidate_filter()
         self.listbox.invalidate_sort()
         visible = [r for r in self.rows if r.score > 0]
-        self.section.set_text("FREQUENT · ALL APPS" if not q else f"RESULTS · {len(visible)}")
-        self.empty.set_text(f"No app matches “{q}”." if q and not visible else "")
+        self.section.set_text(T("FREQUENT · ALL APPS") if not q else f"{T('RESULTS')} · {len(visible)}")
+        self.empty.set_text(f"{T('No app matches')} “{q}”." if q and not visible else "")
         self.empty.set_visible(bool(q and not visible))
         if visible:
             first = min(visible, key=lambda r: (-r.score, r.app.get_display_name().lower()))
@@ -873,7 +882,7 @@ class Keys(Launcher):
 
     def __init__(self, manager):
         super().__init__(manager)
-        self.entry.set_placeholder_text("Search shortcuts")
+        self.entry.set_placeholder_text(T("Search shortcuts"))
         self.listbox.set_sort_func(lambda a, b: (b.score > a.score) - (b.score < a.score) or a.order - b.order)
         self.listbox.set_header_func(self.head)
         self.sheet = Gtk.Box(spacing=18, homogeneous=True)
@@ -987,8 +996,8 @@ class Keys(Launcher):
         self.scroll.set_visible(searching)
         if not searching:
             self.empty.set_visible(False)
-        self.info.set_text("↑↓ move · ↵ run it · Esc" if searching
-                           else "Click one to run it · type to search")
+        self.info.set_text(T("↑↓ move · ↵ run it · Esc") if searching
+                           else T("Click one to run it · type to search"))
 
     def load_apps(self):
         for row in self.listbox.get_children():
@@ -1033,7 +1042,7 @@ class Keys(Launcher):
         self.listbox.invalidate_sort()
         self.listbox.invalidate_headers()
         visible = [r for r in self.rows if r.score > 0]
-        self.empty.set_text(f"No shortcut matches “{q}”." if q and not visible else "")
+        self.empty.set_text(f"{T('No shortcut matches')} “{q}”." if q and not visible else "")
         self.empty.set_visible(bool(q and not visible))
         if visible:
             self.listbox.select_row(min(visible, key=lambda r: (-r.score, r.order)))
@@ -1141,7 +1150,7 @@ class Switch(Popover):
             row.pack_start(card, False, False, 0)
             self.cards.append(card)
         if not self.cards:
-            row.pack_start(label("No windows", "muted"), False, False, 8)
+            row.pack_start(label(T("No windows"), "muted"), False, False, 8)
         self.box.pack_start(row, False, False, 4)
         self.pick(1 if len(self.cards) > 1 else 0)
 
@@ -1213,7 +1222,7 @@ class Clipboard(Popover):
         return [line for line in sh("cliphist", "list").splitlines() if "\t" in line]
 
     def build(self):
-        self.entry = Gtk.Entry(placeholder_text="Search clipboard history")
+        self.entry = Gtk.Entry(placeholder_text=T("Search clipboard history"))
         self.entry.get_style_context().add_class("search")
         self.entry.connect("changed", lambda *_: self.listbox.invalidate_filter())
         self.entry.connect("activate", lambda *_: self.paste(self.listbox.get_selected_row()))
@@ -1221,7 +1230,7 @@ class Clipboard(Popover):
         bar.get_style_context().add_class("searchbar")
         bar.pack_start(label(icon("clipboard"), "icon"), False, False, 0)
         bar.pack_start(self.entry, True, True, 0)
-        self.wipe = Gtk.Button(label="Clear all")
+        self.wipe = Gtk.Button(label=T("Clear all"))
         self.wipe.get_style_context().add_class("chip")
         self.wipe.set_valign(Gtk.Align.CENTER)
         self.wipe.connect("clicked", lambda *_: self.clear_all())
@@ -1240,7 +1249,7 @@ class Clipboard(Popover):
         self.box.pack_start(scroll, False, False, 0)
         lines = self.entries()
         if not lines:
-            self.box.pack_start(label("Nothing copied yet", "muted"), False, False, 8)
+            self.box.pack_start(label(T("Nothing copied yet"), "muted"), False, False, 8)
         thumbs = 0
         for line in lines:
             ident, preview = line.split("\t", 1)
@@ -1260,7 +1269,7 @@ class Clipboard(Popover):
             box.pack_start(text, True, True, 0)
             trash = Gtk.Button(label=icon("trash-2"))
             trash.get_style_context().add_class("nav")
-            trash.set_tooltip_text("Delete from history")
+            trash.set_tooltip_text(T("Delete from history"))
             trash.connect("clicked", lambda _b, r=row: self.delete(r))
             box.pack_start(trash, False, False, 0)
             row.add(box)
@@ -1268,7 +1277,7 @@ class Clipboard(Popover):
         first = self.listbox.get_row_at_index(0)
         if first:
             self.listbox.select_row(first)
-        self.box.pack_start(label("↑↓ move · ↵ copy · Del delete · Esc close", "mono"), False, False, 2)
+        self.box.pack_start(label(T("↑↓ move · ↵ copy · Del delete · Esc close"), "mono"), False, False, 2)
 
     @staticmethod
     def describe(preview):
@@ -1313,7 +1322,7 @@ class Clipboard(Popover):
 
     def clear_all(self):
         if not self.confirm:  # a second click within 3 s really wipes
-            self.wipe.set_label("Sure? Clear")
+            self.wipe.set_label(T("Sure? Clear"))
             self.wipe.get_style_context().add_class("on")
             self.confirm = GLib.timeout_add(3000, self.unconfirm)
             return
@@ -1324,7 +1333,7 @@ class Clipboard(Popover):
 
     def unconfirm(self):
         self.confirm = 0
-        self.wipe.set_label("Clear all")
+        self.wipe.set_label(T("Clear all"))
         self.wipe.get_style_context().remove_class("on")
         return False
 
@@ -1411,8 +1420,8 @@ class Media(Popover):
         t = self.info()
         if t.get("status") not in ("Playing", "Paused"):
             self.tint.load_from_data(b"")
-            self.header("Media")
-            self.box.pack_start(label("Nothing playing", "muted"), False, False, 6)
+            self.header(T("Media"))
+            self.box.pack_start(label(T("Nothing playing"), "muted"), False, False, 6)
             return
         self.player = t.get("player", "")
         pix = self.cover(t.get("mpris:artUrl", ""))

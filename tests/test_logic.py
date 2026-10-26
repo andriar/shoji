@@ -195,5 +195,38 @@ class Zazen(unittest.TestCase):
             self.assertEqual(zazen.today_count(), 2)
 
 
+class Language(unittest.TestCase):
+    def tearDown(self):
+        from shoji_widgets import base
+        base.LANG["code"] = "en"
+
+    def test_every_wrapped_string_has_both_translations(self):
+        import re
+        import string
+        from shoji_widgets.base import STRINGS
+        used = set()
+        for f in (REPO / "widgets/shoji_widgets").glob("*.py"):
+            used |= {m[1] for m in re.findall(r"""\bT\((["'])([^"'\n]+)\1\)""", f.read_text())}
+        self.assertFalse(used - set(STRINGS), "wrapped in T() but missing from STRINGS")
+        fields = lambda s: {f for _, f, _, _ in string.Formatter().parse(s) if f}
+        for en, pair in STRINGS.items():
+            self.assertEqual(len(pair), 2, en)
+            for text in pair:
+                self.assertTrue(text, en)
+                self.assertEqual(fields(text), fields(en), en)
+
+    def test_dates_and_fallback(self):
+        from shoji_widgets import base
+        d = datetime.date(2026, 10, 26)  # a Monday
+        base.LANG["code"] = "id"
+        self.assertEqual((base.day_name(d), base.day_month(d), base.month_year(d)), ("Senin", "26 Oktober", "Oktober 2026"))
+        self.assertEqual(base.T("today"), "hari ini")
+        base.LANG["code"] = "ja"
+        self.assertEqual((base.day_month(d), base.month_year(d), base.short_day(d)), ("10月26日", "2026年10月", "10月26日（月）"))
+        self.assertEqual(base.T("not a known string"), "not a known string")
+        base.LANG["code"] = "fr"   # an unknown code reads as English
+        self.assertEqual(base.T("today"), "today")
+
+
 if __name__ == "__main__":
     unittest.main()

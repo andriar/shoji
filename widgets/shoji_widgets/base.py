@@ -63,6 +63,84 @@ _shoji = importlib.machinery.SourceFileLoader("shoji_ko", SHOJI).load_module()
 KO, micro_season = _shoji.KO, _shoji.micro_season
 
 
+# ---- interface language: prefs "lang" = "en" (default), "id" (Bahasa Indonesia) or "ja" (日本語)
+LANG = {"code": "en"}
+STRINGS = {  # English text -> (Indonesian, Japanese)
+    "Open in GNOME Calendar": ("Buka di GNOME Calendar", "GNOME Calendar で開く"),
+    "today": ("hari ini", "今日"), "tomorrow": ("besok", "明日"), "yesterday": ("kemarin", "昨日"),
+    "Nothing scheduled": ("Tidak ada jadwal", "予定なし"), "+{n} more": ("+{n} lagi", "他 {n} 件"),
+    "Network": ("Jaringan", "ネットワーク"), "Bluetooth · right-click: devices": ("Bluetooth · klik kanan: perangkat", "Bluetooth · 右クリック：デバイス"),
+    "Night light": ("Lampu malam", "夜間モード"), "Silent (do not disturb)": ("Senyap (jangan ganggu)", "通知オフ"),
+    "Keep awake": ("Tetap menyala", "スリープしない"), "Theme": ("Tema", "テーマ"), "Power menu": ("Menu daya", "電源メニュー"),
+    "Copied": ("Tersalin", "コピー済み"), "Open": ("Buka", "開く"), "Show in folder": ("Tampilkan di folder", "フォルダで表示"),
+    "Delete": ("Hapus", "削除"), "in {m} min": ("{m} menit lagi", "あと {m} 分"), "Join": ("Gabung", "参加"),
+    "Dismiss": ("Tutup", "閉じる"), "Mute": ("Bisukan", "ミュート"), "Unmute": ("Bunyikan", "ミュート解除"),
+    "Sound": ("Suara", "サウンド"), "OUTPUT": ("KELUARAN", "出力"), "INPUT": ("MASUKAN", "入力"),
+    "Sound settings…": ("Pengaturan suara…", "サウンド設定…"), "Network settings…": ("Pengaturan jaringan…", "ネットワーク設定…"),
+    "Bluetooth settings…": ("Pengaturan Bluetooth…", "Bluetooth 設定…"), "No paired devices": ("Belum ada perangkat", "ペアリング済みデバイスなし"),
+    "Bar, panels, launcher, lock screen, terminal, GTK apps and wallpaper.":
+        ("Bar, panel, peluncur, layar kunci, terminal, aplikasi GTK, dan wallpaper.", "バー、パネル、ランチャー、ロック画面、ターミナル、GTK アプリ、壁紙。"),
+    "in use": ("dipakai", "使用中"), "dark": ("gelap", "ダーク"), "light": ("terang", "ライト"),
+    "Remove this palette": ("Hapus palet ini", "このパレットを削除"), "Your own": ("Buatanmu", "自分で作る"),
+    "a ground and an accent": ("warna dasar dan aksen", "地色とアクセント"),
+    "Follow the sun: light palette 06:00–18:00, your dark one after":
+        ("Ikuti matahari: terang 06:00–18:00, palet gelapmu setelahnya", "太陽に合わせる：06:00–18:00 はライト、その後はダーク"),
+    "Name it (e.g. Sumi)": ("Beri nama (mis. Sumi)", "名前（例：墨）"),
+    "Cancel": ("Batal", "キャンセル"), "Save & apply": ("Simpan & pakai", "保存して適用"),
+    "No battery": ("Tidak ada baterai", "バッテリーなし"), "POWER MODE": ("MODE DAYA", "電源モード"),
+    "Power settings…": ("Pengaturan daya…", "電源設定…"), "Search apps": ("Cari aplikasi", "アプリを検索"),
+    "FREQUENT · ALL APPS": ("SERING · SEMUA APLIKASI", "よく使う · すべてのアプリ"), "RESULTS": ("HASIL", "結果"),
+    "No app matches": ("Tidak ada aplikasi yang cocok", "一致するアプリなし"), "Search shortcuts": ("Cari pintasan", "ショートカットを検索"),
+    "Click one to run it · type to search": ("Klik untuk menjalankan · ketik untuk mencari", "クリックで実行 · 入力で検索"),
+    "No shortcut matches": ("Tidak ada pintasan yang cocok", "一致するショートカットなし"),
+    "Media": ("Media", "メディア"), "Nothing playing": ("Tidak ada yang diputar", "再生中なし"),
+    "Search clipboard history": ("Cari riwayat clipboard", "クリップボード履歴を検索"), "Clear all": ("Hapus semua", "すべて消去"),
+    "Sure? Clear": ("Yakin? Hapus", "本当に消去"), "Nothing copied yet": ("Belum ada yang disalin", "まだコピーなし"),
+    "Delete from history": ("Hapus dari riwayat", "履歴から削除"), "No windows": ("Tidak ada jendela", "ウィンドウなし"),
+    "↑↓ move · ↵ copy · Del delete · Esc close": ("↑↓ pindah · ↵ salin · Del hapus · Esc tutup", "↑↓ 移動 · ↵ コピー · Del 削除 · Esc 閉じる"),
+    "Language": ("Bahasa", "言語"),
+    "Fully charged": ("Terisi penuh", "充電完了"), "Charging": ("Mengisi daya", "充電中"),
+    "Battery low": ("Baterai lemah", "バッテリー残量低下"), "On battery": ("Pakai baterai", "バッテリー駆動"),
+    "Desktop on mains power": ("Desktop pakai listrik langsung", "AC 電源のデスクトップ"),
+    "{n} zazen today": ("{n} zazen hari ini", "今日の坐禅 {n} 回"),
+    "Seasonal accent: 紅梅 spring · 青竹 summer · 紅葉 autumn · 白群 winter (now {s})":
+        ("Aksen musiman: 紅梅 semi · 青竹 panas · 紅葉 gugur · 白群 dingin (sekarang {s})",
+         "季節のアクセント：紅梅 春 · 青竹 夏 · 紅葉 秋 · 白群 冬（今は {s}）"),
+    "Same from a terminal: {cmd}": ("Dari terminal: {cmd}", "ターミナルから：{cmd}"),
+    "↑↓ move · ↵ run it · Esc": ("↑↓ pindah · ↵ jalankan · Esc", "↑↓ 移動 · ↵ 実行 · Esc"),
+}
+LANGS = {"en": "English", "id": "Indonesia", "ja": "日本語"}
+ID_MONTHS = "Januari Februari Maret April Mei Juni Juli Agustus September Oktober November Desember".split()
+ID_DAYS = "Senin Selasa Rabu Kamis Jumat Sabtu Minggu".split()
+JA_DAYS = "月火水木金土日"
+
+
+def T(text):
+    """text in the interface language (English when there is no translation)."""
+    i = {"id": 0, "ja": 1}.get(LANG["code"])
+    pair = STRINGS.get(text)
+    return pair[i] if pair and i is not None else text
+
+
+def day_name(d):
+    return {"id": ID_DAYS[d.weekday()], "ja": JA_DAYS[d.weekday()] + "曜日"}.get(LANG["code"], d.strftime("%A"))
+
+
+def day_month(d):
+    """26 October · 26 Oktober · 10月26日"""
+    return {"id": f"{d.day} {ID_MONTHS[d.month - 1]}", "ja": f"{d.month}月{d.day}日"}.get(LANG["code"], d.strftime("%-d %B"))
+
+
+def month_year(d):
+    return {"id": f"{ID_MONTHS[d.month - 1]} {d.year}", "ja": f"{d.year}年{d.month}月"}.get(LANG["code"], d.strftime("%B %Y"))
+
+
+def short_day(d):
+    """Mon · 26 Oct · Sen · 26 Okt · 10月26日（月）"""
+    return {"id": f"{ID_DAYS[d.weekday()][:3]} · {d.day} {ID_MONTHS[d.month - 1][:3]}",
+            "ja": f"{d.month}月{d.day}日（{JA_DAYS[d.weekday()]}）"}.get(LANG["code"], d.strftime("%a · %-d %b"))
+
+
 def icon(name):
     return chr(int(LUCIDE[name]["encodedCode"].lstrip("\\"), 16))
 
@@ -245,6 +323,7 @@ provider = Gtk.CssProvider()
 
 
 def load_css():
+    LANG["code"] = prefs().get("lang", "en")  # every surface loads CSS when it shows
     try:
         colors = COLORS.read_bytes()
     except OSError:

@@ -250,7 +250,7 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 
 Preferences live in `~/.config/shoji/prefs.json`: `"seasonal"`, `"follow_sun"`, `"weather"` (`false`,
 or `{"place": "Kyoto"}`; default: the city of your time zone), `"greet"` (one dim
-line in new terminals), `"rin"` (false = no bell), `"auto_silent"` (false = no Silent in meetings), `"reduced_motion"` (Super+Shift+M: nothing animates anywhere), `"numerals"` (`"kanji"` or `"arabic"`).
+line in new terminals), `"rin"` (false = no bell), `"auto_silent"` (false = no Silent in meetings), `"reduced_motion"` (Super+Shift+M: nothing animates anywhere), `"numerals"` (`"kanji"` or `"arabic"`), `"lang"` (`"en"`, `"id"` or `"ja"`: the language of Koyomi and the popovers; the Language chip in the theme manager cycles it).
 
 ## Make your own palette
 

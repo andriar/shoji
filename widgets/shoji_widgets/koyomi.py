@@ -304,7 +304,7 @@ class Calendar:
             if shutil.which("gnome-calendar"):
                 b = Gtk.Button(label=icon("external-link"))
                 b.get_style_context().add_class("nav")
-                b.set_tooltip_text("Open in GNOME Calendar")
+                b.set_tooltip_text(T("Open in GNOME Calendar"))
                 b.connect("clicked", lambda _b: self.open_day())
                 head.pack_start(b, False, False, 0)
             box.pack_start(head, False, False, 0)
@@ -322,7 +322,7 @@ class Calendar:
         for key, tip in self.TOGGLES:
             b = Gtk.Button(label=icon(self.ICONS[key][0]))
             b.get_style_context().add_class("toggle")
-            b.set_tooltip_text(tip)
+            b.set_tooltip_text(T(tip))
             b.connect("clicked", lambda _b, k=key: self.press(k))
             b.connect("button-press-event", lambda _b, ev, k=key: self.press(k, alt=True) if ev.button == 3 else False)
             row.pack_start(b, True, True, 0)
@@ -393,7 +393,7 @@ class Calendar:
             self.grid.remove(child)
         today = datetime.date.today()
         marked = self.agenda.days() if self.agenda else set()
-        self.month.set_text(self.view.strftime("%B %Y"))
+        self.month.set_text(month_year(self.view))
         for r, week in enumerate(self.weeks()):
             for col, d in enumerate(week):
                 b = Gtk.Button()
@@ -431,10 +431,10 @@ class Calendar:
             return
         d = self.selected
         near = {0: "today", 1: "tomorrow", -1: "yesterday"}.get((d - datetime.date.today()).days)
-        self.sel_label.set_text((near or d.strftime("%a · %-d %b")).upper())
+        self.sel_label.set_text((T(near) if near else short_day(d)).upper())
         sat = self.zazen_today() if near == "today" else 0
         self.zazen_count.set_text(f"座 ×{sat}" if sat else "")
-        self.zazen_count.set_tooltip_text(f"{sat} zazen session{'s' * (sat != 1)} today" if sat else None)
+        self.zazen_count.set_tooltip_text(T("{n} zazen today").format(n=sat) if sat else None)
         fade, self.fade = self.fade, False
         if fade:  # a new day: write its agenda on the hidden page and crossfade to it
             self.rows = self.row_pages[1 - self.row_pages.index(self.rows)]
@@ -442,7 +442,7 @@ class Calendar:
             self.rows.remove(child)
         items = self.agenda.day(d)
         if not items:
-            self.rows.pack_start(label("Nothing scheduled", "muted"), False, False, 4)
+            self.rows.pack_start(label(T("Nothing scheduled"), "muted"), False, False, 4)
         shown = items if len(items) <= AGENDA_ROWS else items[:AGENDA_ROWS - 1]
         for it in shown:
             b = Gtk.Button()
@@ -465,7 +465,7 @@ class Calendar:
             self.rows.pack_start(b, False, False, 0)
         if len(items) > len(shown):
             more = Gtk.Button()
-            more.add(label(f"+{len(items) - len(shown)} more"))
+            more.add(label(T("+{n} more").format(n=len(items) - len(shown))))
             for c in ("agenda-row", "more"):
                 more.get_style_context().add_class(c)
             more.connect("clicked", lambda _b: self.open_day())
@@ -507,7 +507,9 @@ class Calendar:
         return False
 
     def paint_toggles(self, st):
+        tips = dict(self.TOGGLES)
         for key, b in self.toggles.items():
+            b.set_tooltip_text(T(tips[key]))  # the language may have changed since the card was built
             ctx, state = b.get_style_context(), st.get(key)
             ctx.remove_class("on")
             ctx.remove_class("off-alert")
@@ -551,8 +553,9 @@ class Calendar:
         load_css()
         today = datetime.date.today()
         self.view = today.replace(day=1)
-        self.weekday.set_text(f"{today.strftime('%A')} · {WEEK_K[(today.weekday() + 1) % 7]}曜日")
-        self.date.set_text(today.strftime("%-d %B"))
+        kanji_day = f"{WEEK_K[(today.weekday() + 1) % 7]}曜日"
+        self.weekday.set_text(kanji_day if LANG["code"] == "ja" else f"{day_name(today)} · {kanji_day}")
+        self.date.set_text(day_month(today))
         self.paint_header()
         self.selected = today
         self.load()
