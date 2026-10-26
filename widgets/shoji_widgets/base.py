@@ -125,6 +125,9 @@ STRINGS = {  # English text -> (Indonesian, Japanese)
     "Open the panel": ("Buka panel", "パネルを開く"), "Later": ("Nanti", "あとで"),
     "Rest your eyes": ("Istirahatkan mata", "目を休める"),
     "Every 20 minutes, look at something far away for 20 seconds": ("Tiap 20 menit, lihat jauh selama 20 detik", "20 分ごとに 20 秒、遠くを見る"),
+    "Previous month": ("Bulan sebelumnya", "前の月"), "Next month": ("Bulan berikutnya", "次の月"),
+    "Close": ("Tutup", "閉じる"), "Previous": ("Sebelumnya", "前へ"), "Next": ("Berikutnya", "次へ"),
+    "Play / pause": ("Putar / jeda", "再生 / 一時停止"),
     "Kept in ~/.config/shoji/prefs.json": ("Disimpan di ~/.config/shoji/prefs.json", "~/.config/shoji/prefs.json に保存"),
     "Fully charged": ("Terisi penuh", "充電完了"), "Charging": ("Mengisi daya", "充電中"),
     "Battery low": ("Baterai lemah", "バッテリー残量低下"), "On battery": ("Pakai baterai", "バッテリー駆動"),
@@ -170,6 +173,32 @@ def short_day(d):
 
 def icon(name):
     return chr(int(LUCIDE[name]["encodedCode"].lstrip("\\"), 16))
+
+
+def is_glyph(text):
+    """Lucide glyphs live in the Private Use Area: a screen reader would read them as nothing."""
+    return bool(text) and all(0xE000 <= ord(ch) <= 0xF8FF for ch in text.strip())
+
+
+def name_icons(root):
+    """Every button that shows only a glyph takes its tooltip as its accessible name. Returns the
+    ones that have no tooltip to give (the tests keep that list empty)."""
+    unnamed = []
+    stack = [root]
+    while stack:
+        w = stack.pop()
+        if isinstance(w, Gtk.Button):
+            child = w.get_child()
+            text = child.get_text() if isinstance(child, Gtk.Label) else ""
+            if is_glyph(text):
+                tip = w.get_tooltip_text()
+                if tip:
+                    w.get_accessible().set_name(tip)
+                else:
+                    unnamed.append(w)
+        if isinstance(w, Gtk.Container):
+            stack.extend(w.get_children())
+    return unnamed
 
 
 def sh(*cmd):

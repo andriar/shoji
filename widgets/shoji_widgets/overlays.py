@@ -141,6 +141,7 @@ class ShotCard:
             b.connect("clicked", lambda _b, f=fn: f())
             line.pack_start(b, False, False, 0)
         self.box.pack_start(line, False, False, 0)
+        name_icons(self.box)
         self.box.show_all()
         self.win.resize(1, 1)  # a GTK window never shrinks back on its own: fit this content
         self.win.show_all()
@@ -224,6 +225,7 @@ class ReminderCard:
         later.connect("clicked", lambda *_: self.hide())
         row.pack_end(later, False, False, 0)
         self.box.pack_start(row, False, False, 2)
+        name_icons(self.box)
         self.box.show_all()
         self.win.resize(1, 1)  # a GTK window never shrinks back on its own: fit this content
         self.win.show_all()

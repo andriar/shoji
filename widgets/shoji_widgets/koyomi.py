@@ -274,8 +274,9 @@ class Calendar:
         nav = Gtk.Box(spacing=4)
         self.month = label("", "title")
         nav.pack_start(self.month, True, True, 0)
-        for name, step in (("chevron-left", -1), ("chevron-right", 1)):
+        for name, step, tip in (("chevron-left", -1, "Previous month"), ("chevron-right", 1, "Next month")):
             b = Gtk.Button(label=icon(name))
+            b.set_tooltip_text(T(tip))
             b.get_style_context().add_class("nav")
             b.connect("clicked", lambda _b, s=step: self.shift(s))
             nav.pack_start(b, False, False, 0)
@@ -554,6 +555,7 @@ class Calendar:
 
     def show(self):
         load_css()
+        name_icons(self.win)
         today = datetime.date.today()
         self.view = today.replace(day=1)
         kanji_day = f"{WEEK_K[(today.weekday() + 1) % 7]}曜日"

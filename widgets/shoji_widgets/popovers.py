@@ -82,6 +82,7 @@ class Popover:
         load_css()
         self.clear()
         self.build()
+        name_icons(self.box)
         self.box.show_all()
         self.win.show()
         self.win.present()
@@ -339,6 +340,7 @@ class ThemeManager(Popover):
         tb.pack_start(label(T("Bar, panels, launcher, lock screen, terminal, GTK apps and wallpaper."), "muted"), False, False, 0)
         head.pack_start(tb, True, True, 0)
         close = Gtk.Button(label=icon("x"))
+        close.set_tooltip_text(T("Close"))
         close.get_style_context().add_class("nav")
         close.connect("clicked", lambda *_: self.manager.close())
         head.pack_start(close, False, False, 0)
@@ -1460,10 +1462,11 @@ class Media(Popover):
             self.seek = None
         self.playing = t["status"] == "Playing"
         controls = Gtk.Box(spacing=18, halign=Gtk.Align.CENTER)
-        for name, cmd, cls in (("skip-back", "previous", "nav"),
-                               ("pause" if t["status"] == "Playing" else "play", "toggle", "play"),
-                               ("skip-forward", "next", "nav")):
+        for name, cmd, cls, tip in (("skip-back", "previous", "nav", "Previous"),
+                                    ("pause" if t["status"] == "Playing" else "play", "toggle", "play", "Play / pause"),
+                                    ("skip-forward", "next", "nav", "Next")):
             b = Gtk.Button(label=icon(name))
+            b.set_tooltip_text(T(tip))
             b.get_style_context().add_class(cls)
             b.get_style_context().add_class("media-btn")
             b.set_valign(Gtk.Align.CENTER)

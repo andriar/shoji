@@ -424,5 +424,21 @@ class EyeRest(unittest.TestCase):
         self.assertFalse(self.make(on=False).due(30 * 60))
 
 
+class Accessibility(unittest.TestCase):
+    def test_glyph_buttons_take_their_tooltip_as_name(self):
+        from shoji_widgets import base
+        from gi.repository import Gtk
+        box = Gtk.Box()
+        named = Gtk.Button(label=base.icon("x"))
+        named.set_tooltip_text("Close")
+        silent = Gtk.Button(label=base.icon("plus"))
+        words = Gtk.Button(label="Save & apply")   # a text button already reads fine
+        for b in (named, silent, words):
+            box.pack_start(b, False, False, 0)
+        self.assertEqual(base.name_icons(box), [silent])
+        self.assertEqual(named.get_accessible().get_name(), "Close")
+        self.assertFalse(base.is_glyph("Save"))
+
+
 if __name__ == "__main__":
     unittest.main()
