@@ -62,6 +62,8 @@ means "you are here" or "this is on".
 - **Launcher** (Super+Space): frequent apps first; Enter focuses an app that is already open.
 - **Shortcuts sheet** (Super+/): every bind, aligned in columns; click to run, type to search.
 - **Instant terminal**: a ghostty window in ~20 ms (`hypr-term`).
+- **Screenshots** (PrtSc): copied and saved, then a small card in the corner with the picture and
+  Open / Folder / Delete; it leaves by itself after 6 s.
 - **Tabbed windows** (Super+T) as paper tabs; **one key per app** (Super+K Slack, Super+B browser…).
 - **Theme manager** (Super+Shift+T): six palettes, follow the sun.
 

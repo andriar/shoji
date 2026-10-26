@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 — 2026-10-26
+
+- Koyomi shows the weather in one kanji beside the micro-season (霜始降 · 曇 31°), from Open-Meteo
+  for the city of your time zone (prefs "weather" to change or turn off).
+- Zazen: a 5-minute rest (休) after each session, the count of notifications that waited, and the
+  day's sessions in Koyomi (座 ×N).
+- Screenshots: a preview card in the bottom right with Open / Folder / Delete (hypr-shot is now
+  part of Shoji).
+
 ## 0.2.2 — 2026-10-26
 
 - One motion scale across Shoji: state 150 ms, content 180 ms, space 320 ms, all easing out

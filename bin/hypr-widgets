@@ -3,6 +3,7 @@
 
   osd       ensō ring, top right: volume / mic level, shown even when Do Not Disturb is on.
   zazen     ensō at the top centre during a shoji-zazen focus session ("zazen<TAB>start|stop").
+  shot      preview card in the bottom right after a screenshot ("shot<TAB>path", from hypr-shot).
             hypr-osd writes "icon<TAB>title<TAB>percent<TAB>muted" lines to $FIFO.
   calendar  Koyomi: kanji week, today as a seal; sits left of the swaync control center
             while it is open (follows swaync's SubscribeV2 cc_open signal). Click a day for its
@@ -450,6 +451,96 @@ class Osd:
         self.timer = 0
         self.win.hide()
         return False
+
+
+# ---------------------------------------------------------------- screenshot card
+class ShotCard:
+    """After a screenshot (hypr-shot writes "shot<TAB>path"): a small card in the bottom right with
+    the picture, already copied, and Open / Folder / Delete. It leaves after 6 s, or stays while the
+    pointer is on it."""
+    STAY_MS, W, H = 6000, 300, 170
+
+    def __init__(self):
+        self.win = layer_window("hypr-shot", Layer.Layer.OVERLAY)
+        for edge in (Layer.Edge.BOTTOM, Layer.Edge.RIGHT):
+            Layer.set_anchor(self.win, edge, True)
+            Layer.set_margin(self.win, edge, 16)
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.box.get_style_context().add_class("panel")
+        events = Gtk.EventBox()
+        events.add(self.box)
+        events.connect("enter-notify-event", lambda *_: self.hold())
+        events.connect("leave-notify-event", lambda *_: self.later())
+        self.win.add(events)
+        self.timer, self.path = 0, None
+
+    def show(self, path):
+        self.path = Path(path)
+        try:
+            pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(self.path), self.W, self.H, True)
+        except GLib.Error:
+            return
+        load_css()
+        for c in self.box.get_children():
+            self.box.remove(c)
+        art = Gtk.DrawingArea()
+        art.set_size_request(pix.get_width(), pix.get_height())
+        art.set_halign(Gtk.Align.CENTER)
+        art.connect("draw", self.draw, pix)
+        click = Gtk.EventBox()
+        click.add(art)
+        click.connect("button-press-event", lambda *_: self.open())
+        self.box.pack_start(click, False, False, 0)
+        line = Gtk.Box(spacing=6)
+        line.pack_start(label("Copied · " + self.path.name.removeprefix("screenshot-"), "label-small"), True, True, 0)
+        for ico, tip, fn in (("image", "Open", self.open), ("folder", "Show in folder", self.folder),
+                             ("trash-2", "Delete", self.delete)):
+            b = Gtk.Button(label=icon(ico))
+            b.get_style_context().add_class("nav")
+            b.set_tooltip_text(tip)
+            b.connect("clicked", lambda _b, f=fn: f())
+            line.pack_start(b, False, False, 0)
+        self.box.pack_start(line, False, False, 0)
+        self.box.show_all()
+        self.win.show_all()
+        self.later()
+
+    @staticmethod
+    def draw(_w, cr, pix):
+        Media.rounded(cr, 0, 0, pix.get_width(), pix.get_height(), 8)
+        cr.clip()
+        Gdk.cairo_set_source_pixbuf(cr, pix, 0, 0)
+        cr.paint()
+        return False
+
+    def hold(self):
+        if self.timer:
+            GLib.source_remove(self.timer)
+            self.timer = 0
+        return False
+
+    def later(self):
+        self.hold()
+        self.timer = GLib.timeout_add(self.STAY_MS, self.hide)
+        return False
+
+    def hide(self):
+        self.timer = 0
+        self.win.hide()
+        return False
+
+    def open(self):
+        viewer = shutil.which("eog") or shutil.which("loupe") or "xdg-open"
+        spawn(viewer, str(self.path))
+        self.hide()
+
+    def folder(self):
+        spawn("thunar", str(self.path)) if shutil.which("thunar") else spawn("xdg-open", str(self.path.parent))
+        self.hide()
+
+    def delete(self):
+        self.path.unlink(missing_ok=True)
+        self.hide()
 
 
 # ---------------------------------------------------------------- zazen
@@ -2234,7 +2325,7 @@ class Popovers:
 
 
 # ---------------------------------------------------------------- wiring
-def watch_fifo(osd, pops, zazen):
+def watch_fifo(osd, pops, zazen, shot):
     if FIFO.exists() and not FIFO.is_fifo():
         FIFO.unlink()
     if not FIFO.exists():
@@ -2257,6 +2348,8 @@ def watch_fifo(osd, pops, zazen):
                 pops.toggle(parts[1])
             elif len(parts) == 3 and parts[0] == "pop" and parts[1] in ("launcher", "keys"):
                 pops.open_with(parts[1], parts[2])  # hypr-pop launcher|keys <text>: open with a query
+            elif len(parts) == 2 and parts[0] == "shot":
+                shot.show(parts[1])
             elif len(parts) == 2 and parts[0] == "zazen":
                 zazen.start() if parts[1] == "start" else zazen.stop()
             elif len(parts) == 4 and parts[2].isdigit():
@@ -2339,7 +2432,7 @@ def main():
                                              Gtk.STYLE_PROVIDER_PRIORITY_USER)
     load_css()
     pops = Popovers()
-    watch_fifo(Osd(), pops, Zazen())
+    watch_fifo(Osd(), pops, Zazen(), ShotCard())
     watch_swaync(Calendar())
     focus = NotifyFocus()  # noqa: F841  (kept alive for its signal and socket)
     today = TodayCache()  # noqa: F841
