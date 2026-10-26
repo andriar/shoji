@@ -1031,69 +1031,166 @@ def sky_tint(now=None):
     return colour, round(max(0.0, min(1.0, f)), 1)
 
 
+def ink_ridge(rnd, x0, x1, y_at, rough, step):
+    """A ridge line by midpoint displacement around y_at(x): uneven like a brush, never a clean
+    curve. Returns points left to right."""
+    pts = {x0: y_at(x0), x1: y_at(x1)}
+    span, amp = x1 - x0, rough
+    while span > step:
+        xs = sorted(pts)
+        for a, b in zip(xs, xs[1:]):
+            m = (a + b) / 2
+            pts[m] = (pts[a] + pts[b]) / 2 + (y_at(m) - (y_at(a) + y_at(b)) / 2) + rnd.uniform(-amp, amp)
+        span /= 2
+        amp *= 0.55
+    return sorted(pts.items())
+
+
 def render_wallpaper(name):
+    """Sumi-e mountains in the palette: one tall peak on the left, the sun (light palettes) or
+    tonight's moon (dark ones) on the right, empty sky between (間). Each ridge is darker at its
+    crest where the ink pools and dissolves into mist at its foot; a dry brush catches the crests;
+    a few pines stand on the near ridge; washi fibres and a soft vignette hold it on paper."""
     import cairo
+    import random
     p = PALETTES[name]
+    dark = p["dark"]
     w, h = monitor_size()
+    sx, sy = w / 1280, h / 720   # drawn in a 1280 × 720 frame, scaled to the monitor
     s = cairo.ImageSurface(cairo.FORMAT_RGB24, w, h)
     c = cairo.Context(s)
     tint, strength = sky_tint()
-    strength *= 0.7 if p["dark"] else 1.0  # a dark sky keeps its night
+    strength *= 0.7 if dark else 1.0  # a dark sky keeps its night
     sky = (mix(p["sky"][0], tint, strength * 0.35), mix(p["sky"][1], tint, strength * 0.55)) if tint else p["sky"]
     g = cairo.LinearGradient(0, 0, 0, h)
     g.add_color_stop_rgba(0, *cairo_rgb(sky[0]))
     g.add_color_stop_rgba(1, *cairo_rgb(sky[1]))
     c.set_source(g)
     c.paint()
-    # the sun on light palettes; on dark ones tonight's moon, in its real phase
+    ink = "#000000" if not dark else mix(p["hills"][2], "#000000", 0.5)
+    mist = mix(sky[1], p["text"], 0.10) if dark else mix(sky[1], "#ffffff", 0.45)
+    rnd = random.Random(3)  # the same hand every time
+
+    # the sun on light palettes, its edge bled into the paper; on dark ones tonight's moon with
+    # faint maria, in its real phase
     cx, cy, r = w * 0.727, h * 0.333, w * 0.0656
-    if p["dark"]:
+    if dark:
         draw_moon(c, cx, cy, r, moon_phase(), cairo_rgb(p["accent"], 0.92), cairo_rgb(p["accent"], 0.10))
+        c.save()
+        c.arc(cx, cy, r, 0, 2 * math.pi)
+        c.clip()
+        for mx, my, mr in ((-0.25, -0.18, 0.55), (0.22, 0.12, 0.45), (-0.08, 0.40, 0.35)):   # soft, wide maria
+            gm = cairo.RadialGradient(cx + mx * r, cy + my * r, 0, cx + mx * r, cy + my * r, mr * r)
+            gm.add_color_stop_rgba(0, *cairo_rgb(mix(p["accent"], "#000000", 0.30), 0.13))
+            gm.add_color_stop_rgba(1, *cairo_rgb(p["accent"], 0))
+            c.set_source(gm)
+            c.paint()
+        c.restore()
     else:
-        halo = cairo.RadialGradient(cx, cy, r * 0.9, cx, cy, r * 1.5)
-        halo.add_color_stop_rgba(0, *cairo_rgb(p["accent"], 0.18))
+        halo = cairo.RadialGradient(cx, cy, r * 0.95, cx, cy, r * 1.45)
+        halo.add_color_stop_rgba(0, *cairo_rgb(p["accent"], 0.11))
         halo.add_color_stop_rgba(1, *cairo_rgb(p["accent"], 0))
         c.set_source(halo)
-        c.arc(cx, cy, r * 1.5, 0, 2 * math.pi)
+        c.arc(cx, cy, r * 1.45, 0, 2 * math.pi)
         c.fill()
-        c.set_source_rgba(*cairo_rgb(p["accent"], 0.9))
-        c.arc(cx, cy, r, 0, 2 * math.pi)
+        disc = cairo.RadialGradient(cx, cy, r * 0.96, cx, cy, r * 1.02)   # the ink bleeds a little at the rim
+        disc.add_color_stop_rgba(0, *cairo_rgb(p["accent"], 0.92))
+        disc.add_color_stop_rgba(1, *cairo_rgb(p["accent"], 0))
+        c.set_source(disc)
+        c.arc(cx, cy, r * 1.02, 0, 2 * math.pi)
         c.fill()
-    sx, sy = w / 1280, h / 720
-    ridges = [
-        [(0, 470), (120, 400), (210, 440), (330, 350), (450, 430), (560, 380), (700, 450), (820, 390), (960, 455), (1100, 400), (1280, 450)],
-        [(0, 560), (160, 500), (300, 545), (420, 490), (600, 560), (760, 515), (900, 565), (1060, 520), (1280, 570)],
-        [(0, 640), (220, 600), (380, 630), (560, 595), (760, 640), (980, 605), (1280, 645)],
-    ]
-    import random
-    rnd = random.Random(3)  # the same hand every time
-    for i, (ridge, col) in enumerate(zip(ridges, p["hills"])):
-        # ink wash: smooth ridges with a little tremor, the ink pooled darker along the crest
-        pts = [(x * sx + rnd.uniform(-4, 4) * sx, y * sy + rnd.uniform(-5, 5) * sy) for x, y in ridge]
-        pts[0], pts[-1] = (0, pts[0][1]), (w, pts[-1][1])
-        c.move_to(0, h)
-        c.line_to(*pts[0])
-        for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
-            # slopes sag like a brush stroke and the peaks stay sharp
-            low, sag = max(y0, y1), 0.3
-            ya, yb = y0 + (y1 - y0) / 3, y0 + (y1 - y0) * 2 / 3
-            c.curve_to(x0 + (x1 - x0) / 3, ya + (low - ya) * sag, x0 + (x1 - x0) * 2 / 3, yb + (low - yb) * sag, x1, y1)
-        c.line_to(w, h)
-        c.close_path()
-        top = min(y for _, y in pts)
-        ink = cairo.LinearGradient(0, top, 0, top + 160 * sy)
-        ink.add_color_stop_rgba(0, *cairo_rgb(mix(col, "#000000", 0.18 if p["dark"] else 0.10)))
-        ink.add_color_stop_rgba(1, *cairo_rgb(col))
-        c.set_source(ink)
-        c.fill()
-        if i == 0:  # mist between the first and second ridge
-            m = cairo.LinearGradient(0, 420 * sy, 0, 540 * sy)
-            m.add_color_stop_rgba(0, *cairo_rgb(sky[1], 0))
-            m.add_color_stop_rgba(0.55, *cairo_rgb(sky[1], 0.7))
-            m.add_color_stop_rgba(1, *cairo_rgb(sky[1], 0))
-            c.set_source(m)
-            c.rectangle(0, 420 * sy, w, 120 * sy)
+
+    # two long thin clouds, one crossing the lower edge of the sun or moon
+    cloud = mist if dark else mix(sky[1], p["hills"][1], 0.55)   # by day a cloud before the sun is grey
+    for y0, x0, x1, a in ((cy + r * 1.02, cx - r * 3.4, cx + r * 2.4, 0.42), (h * 0.21, w * 0.06, w * 0.42, 0.26)):
+        for k in range(4):   # a few soft strokes, offset, so it reads as cloud and not as a line
+            dy, dx = rnd.uniform(-9, 9) * sy, rnd.uniform(-40, 40) * sx
+            c.save()
+            c.translate((x0 + x1) / 2 + dx, y0 + dy)
+            c.scale((x1 - x0) / 2 * rnd.uniform(0.55, 0.95), rnd.uniform(9, 16) * sy)
+            gc = cairo.RadialGradient(0, 0, 0, 0, 0, 1)
+            gc.add_color_stop_rgba(0, *cairo_rgb(cloud, a * rnd.uniform(0.5, 1.0)))
+            gc.add_color_stop_rgba(1, *cairo_rgb(cloud, 0))
+            c.set_source(gc)
+            c.arc(0, 0, 1, 0, 2 * math.pi)
             c.fill()
+            c.restore()
+
+    def peak(x):   # the tall mountain on the left: steep at the summit, easing out, the right flank longer
+        d = x - 330
+        reach = 200 if d < 0 else 330
+        return 245 + 300 * (1 - math.exp(-abs(d) / reach)) + 10 * math.sin(x / 23) * min(1, abs(d) / 60)
+    layers = [   # (ridge height at x, roughness, colour): far range, the peak, middle, near
+        (lambda x: 455 + 25 * math.sin(x / 140), 26, mix(p["hills"][0], sky[1], 0.45)),
+        (lambda x: min(peak(x), 520), 16, mix(p["hills"][0], ink, 0.30 if dark else 0.10)),
+        (lambda x: 545 + 22 * math.sin(x / 95 + 1.3) + 12 * math.sin(x / 41), 18, p["hills"][1]),
+        (lambda x: 628 + 14 * math.sin(x / 120 + 0.4) + 8 * math.sin(x / 37), 10, p["hills"][2]),
+    ]
+    for i, (y_at, rough, col) in enumerate(layers):
+        pts = [(x * sx, y * sy) for x, y in ink_ridge(rnd, -20, 1300, y_at, rough, 5)]
+        top = min(y for _, y in pts)
+        c.move_to(pts[0][0], h)
+        for x, y in pts:
+            c.line_to(x, y)
+        c.line_to(pts[-1][0], h)
+        c.close_path()
+        crest = mix(col, ink, 0.22 if dark else 0.14)   # the ink pools at the crest, then thins
+        wash = cairo.LinearGradient(0, top, 0, top + 170 * sy)
+        wash.add_color_stop_rgba(0, *cairo_rgb(crest))
+        wash.add_color_stop_rgba(0.45, *cairo_rgb(col))
+        wash.add_color_stop_rgba(1, *cairo_rgb(mix(col, mist, 0.6 if i < 3 else 0.15)))
+        c.set_source(wash)
+        c.fill()
+        c.set_line_cap(cairo.LINE_CAP_ROUND)   # a dry brush along the crest: broken, darker strokes
+        for _ in range(2):
+            c.set_line_width(rnd.uniform(1.0, 2.4) * sy)
+            c.set_source_rgba(*cairo_rgb(crest, rnd.uniform(0.25, 0.45)))
+            drawing = False
+            for x, y in pts:   # short strokes with long gaps: the brush skips
+                if rnd.random() < (0.07 if drawing else 0.025):
+                    drawing = not drawing
+                    c.new_path() if drawing else c.stroke()
+                if drawing:
+                    c.line_to(x, y + rnd.uniform(0, 2) * sy)
+            c.stroke()
+        if i == 3:   # three pines on the near ridge, leaning; foliage in flat pads reaching downwind
+            for px, tall, lean in ((1040, 78, 9), (1096, 58, 6), (1150, 44, 4)):
+                py = min(y for x, y in pts if abs(x - px * sx) < 6 * sx) + 4 * sy
+                tall *= sy
+                pine = mix(col, ink, 0.5)
+                c.set_source_rgba(*cairo_rgb(pine))
+                c.set_line_width(2.6 * sx)
+                top_x = px * sx + lean * sx
+                c.move_to(px * sx, py)
+                c.curve_to(px * sx - 4 * sx, py - tall * 0.35, top_x + 4 * sx, py - tall * 0.7, top_x, py - tall)
+                c.stroke()
+                for k, (at, reach) in enumerate(((0.45, 22), (0.68, 17), (0.88, 12), (1.0, 7))):
+                    fx = px * sx + lean * sx * at
+                    fy = py - tall * at
+                    for j in range(3):   # each pad: a few overlapping flat dabs
+                        c.save()
+                        c.translate(fx + rnd.uniform(-0.35, 0.65) * reach * sx, fy + rnd.uniform(-1.5, 1.5) * sy)
+                        c.scale(reach * rnd.uniform(0.5, 0.8) * sx, rnd.uniform(2.2, 3.2) * sy)
+                        c.arc(0, 0, 1, 0, 2 * math.pi)
+                        c.restore()
+                        c.fill()
+
+    # washi: short fibres and a soft vignette, so it reads as paper rather than a screen
+    fib = rnd.random
+    for _ in range(int(650 * sx * sy)):   # long, sparse, gently bent: fibres, not cracks
+        x, y, ln, ang = fib() * w, fib() * h, (16 + fib() * 30) * sx, fib() * math.pi
+        c.set_line_width(0.6 * sx)
+        c.set_source_rgba(*cairo_rgb("#ffffff", (0.012 if dark else 0.045) + 0.012 * fib()))   # paler than the paper
+        c.move_to(x, y)
+        c.curve_to(x + math.cos(ang) * ln / 3, y + math.sin(ang) * ln / 3 + 2 * sy,
+                   x + math.cos(ang) * ln * 2 / 3, y + math.sin(ang) * ln * 2 / 3 - 2 * sy,
+                   x + math.cos(ang) * ln, y + math.sin(ang) * ln)
+        c.stroke()
+    v = cairo.RadialGradient(w / 2, h * 0.45, h * 0.45, w / 2, h * 0.45, h * 1.1)
+    v.add_color_stop_rgba(0, 0, 0, 0, 0)
+    v.add_color_stop_rgba(1, *cairo_rgb(ink, 0.28 if dark else 0.12))
+    c.set_source(v)
+    c.paint()
     WALLS.mkdir(parents=True, exist_ok=True)
     out = WALLS / f"shoji-{name}.png"
     s.write_to_png(str(out))
