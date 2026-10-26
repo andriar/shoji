@@ -108,6 +108,7 @@ class Meetings(unittest.TestCase):
         m.today = type("T", (), {"items": lambda _s: items})()
         m.reasons, m.ours, m.held_from, m.reminded = set(), False, 0, set()
         m.card = type("C", (), {"show": lambda _s, i: shown.append(i["title"])})()
+        m.shimai = type("S", (), {"resting": lambda _s: False, "tick": lambda _s, now: None})()
         return m, shown
 
     def test_silent_during_an_event_and_one_reminder(self):
@@ -290,6 +291,47 @@ class Greeter(unittest.TestCase):
             if r.returncode:
                 self.skipTest("GTK 4 is not installed")
             self.assertEqual(r.stdout.strip(), "")
+
+
+class Shimai(unittest.TestCase):
+    def make(self, prefs_value="17:00"):
+        from unittest import mock
+        from shoji_widgets import overlays
+        s = object.__new__(overlays.Shimai)
+        s.shown_on, s.timer = None, 0
+        s.show_day = mock.Mock()
+        s.STATE = Path(tempfile.mkdtemp()) / "shimai.json"
+        self.patch = mock.patch.object(overlays, "prefs", return_value={"shimai": prefs_value})
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+        return s
+
+    def test_once_on_a_weekday_evening(self):
+        s = self.make()
+        monday = datetime.datetime(2026, 10, 26, 16, 59)
+        s.tick(monday)
+        s.show_day.assert_not_called()
+        s.tick(monday.replace(hour=17, minute=0))
+        s.tick(monday.replace(hour=17, minute=30))
+        self.assertEqual(s.show_day.call_count, 1)
+
+    def test_not_on_weekends_late_logins_or_when_off(self):
+        s = self.make()
+        s.tick(datetime.datetime(2026, 10, 31, 17, 5))     # Saturday
+        s.tick(datetime.datetime(2026, 10, 26, 19, 30))    # two hours after: not the end of a day
+        s.show_day.assert_not_called()
+        s = self.make("")
+        s.tick(datetime.datetime(2026, 10, 26, 17, 5))
+        s.show_day.assert_not_called()
+
+    def test_resting_until_the_morning(self):
+        import time
+        s = self.make()
+        self.assertFalse(s.resting())
+        s.STATE.write_text(json.dumps({"until": time.time() + 60}))
+        self.assertTrue(s.resting())
+        s.STATE.write_text(json.dumps({"until": time.time() - 1}))
+        self.assertFalse(s.resting())
 
 
 if __name__ == "__main__":

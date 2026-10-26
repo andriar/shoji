@@ -252,6 +252,7 @@ class Meetings:
         self.today, self.reasons, self.ours, self.held_from = today, set(), False, 0
         self.reminded = set()
         self.card = ReminderCard()
+        self.shimai = Shimai(today, self)
         GLib.timeout_add_seconds(30, self.tick)
         GLib.timeout_add_seconds(5, lambda: (self.tick(), False)[1])  # once the agenda has loaded
 
@@ -260,6 +261,8 @@ class Meetings:
         hm, soon = now.strftime("%H:%M"), (now + datetime.timedelta(minutes=10)).strftime("%H:%M")
         timed = [i for i in self.today.items() if not i["task"] and i["when"] not in ("", "終日")]
         self.set("meeting", any(i["when"] <= hm < i["end"] for i in timed))
+        self.set("shimai", self.shimai.resting())
+        self.shimai.tick(now)
         for i in timed:
             key = (i["uid"], i["when"])
             if hm < i["when"] <= soon and key not in self.reminded:
@@ -286,6 +289,85 @@ class Meetings:
             if held:
                 spawn("notify-send", "-a", "Shoji", "-u", "low", "静 · Silent is off again",
                       f"{held} notification{'s' * (held != 1)} waited while you were busy.")
+
+
+class Shimai(ReminderCard):
+    """仕舞い: at the end of the working day (prefs "shimai", default "17:00"; "" = off), Monday to
+    Friday, one card: the day in a line (events, zazen, what waits in the panel) and tomorrow's first
+    event. "Done for today" keeps Silent on until 07:00; Meetings brings it back with its note."""
+    STATE = RUN / "shoji-shimai.json"
+    MORNING = datetime.time(7, 0)
+
+    def __init__(self, today, meetings):
+        super().__init__()
+        self.today, self.meetings, self.shown_on = today, meetings, None
+
+    def resting(self):
+        try:
+            return time.time() < json.loads(self.STATE.read_text())["until"]
+        except (OSError, ValueError, KeyError):
+            return False
+
+    def tick(self, now):
+        at = prefs().get("shimai", "17:00")
+        if not at or now.weekday() > 4 or self.shown_on == now.date() or self.resting():
+            return
+        start = datetime.datetime.combine(now.date(), datetime.time.fromisoformat(at))
+        if start <= now < start + datetime.timedelta(hours=2):  # logging in at 23:00 is not the end of a day
+            self.shown_on = now.date()
+            self.show_day()
+
+    def summary(self):
+        events = [i for i in self.today.items() if not i["task"] and i["when"] not in ("", "終日")]
+        zazen = Calendar.zazen_today()
+        waiting = int(sh("swaync-client", "-c") or 0)
+        parts = [T("{n} events").format(n=len(events))]
+        if zazen:
+            parts.append(f"座 ×{zazen}")
+        parts.append(T("{n} in the panel").format(n=waiting))
+        nxt = next((i for i in self.tomorrow_items() if i["when"] not in ("", "終日")), None)
+        later = (T("Tomorrow {when} · {title}").format(when=nxt["when"], title=nxt["title"]) if nxt
+                 else T("Nothing timed tomorrow"))
+        return " · ".join(parts), later
+
+    def tomorrow_items(self):
+        return [i for i in self.today.tomorrow() if not i["task"]]
+
+    def show_day(self):
+        load_css()
+        for c in self.box.get_children():
+            self.box.remove(c)
+        day, later = self.summary()
+        self.box.pack_start(label(T("仕舞い · THE DAY IS DONE"), "label-small"), False, False, 0)
+        self.box.pack_start(label(day, "title"), False, False, 0)
+        nxt = label(later, "muted")
+        nxt.set_ellipsize(Pango.EllipsizeMode.END)
+        self.box.pack_start(nxt, False, False, 0)
+        row = Gtk.Box(spacing=6)
+        done = Gtk.Button(label=T("Done for today"))
+        done.set_tooltip_text(T("Silent until 07:00"))
+        for c in ("chip", "on"):
+            done.get_style_context().add_class(c)
+        done.connect("clicked", lambda *_: self.rest())
+        row.pack_start(done, False, False, 0)
+        later_b = Gtk.Button(label=T("Not yet"))
+        later_b.get_style_context().add_class("chip")
+        later_b.connect("clicked", lambda *_: self.hide())
+        row.pack_end(later_b, False, False, 0)
+        self.box.pack_start(row, False, False, 2)
+        self.box.show_all()
+        self.win.resize(1, 1)
+        self.win.show_all()
+        if self.timer:
+            GLib.source_remove(self.timer)
+        self.timer = GLib.timeout_add_seconds(30 * 60, self.hide)
+
+    def rest(self):
+        now = datetime.datetime.now()
+        morning = datetime.datetime.combine(now.date() + datetime.timedelta(days=1), self.MORNING)
+        self.STATE.write_text(json.dumps({"until": morning.timestamp()}))
+        self.meetings.set("shimai", True)
+        self.hide()
 
 
 # ---------------------------------------------------------------- zazen

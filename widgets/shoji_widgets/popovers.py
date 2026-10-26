@@ -1574,6 +1574,7 @@ class Preferences(Popover):
     CHOICES = [  # key, title, [(value, label)], default
         ("lang", "Language", [("en", "English"), ("id", "Indonesia"), ("ja", "日本語")], "en"),
         ("numerals", "Workspace numbers", [("kanji", "一二三"), ("arabic", "123")], "kanji"),
+        ("shimai", "End of the day", [("", "Off"), ("17:00", "17:00"), ("18:00", "18:00")], "17:00"),
     ]
 
     def __init__(self, manager):
@@ -1591,7 +1592,7 @@ class Preferences(Popover):
             line.pack_start(label(T(title)), True, True, 0)
             seg = Gtk.Box(spacing=4)
             for value, name in choices:
-                b = Gtk.Button(label=name)
+                b = Gtk.Button(label=T(name))
                 b.get_style_context().add_class("chip")
                 if pr.get(key, default) == value:
                     b.get_style_context().add_class("on")

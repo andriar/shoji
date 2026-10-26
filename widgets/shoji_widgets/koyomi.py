@@ -225,11 +225,14 @@ class TodayCache:
 
     def refresh(self):
         today = datetime.date.today()
-        self.agenda.load(today, today)
+        self.agenda.load(today, today + datetime.timedelta(days=1))  # tomorrow too, for 仕舞い
         return True
 
     def items(self):
         return self.agenda.day(datetime.date.today()) if self.agenda else []
+
+    def tomorrow(self):
+        return self.agenda.day(datetime.date.today() + datetime.timedelta(days=1)) if self.agenda else []
 
     def write(self):
         items = [{"when": i["when"], "title": i["title"], "task": i["task"]} for i in self.items()]
