@@ -5,7 +5,9 @@ and the 候 of the day sit small in a corner. Any input (hypridle's on-resume) t
 
   shoji-ink start      fade in on every monitor (hypridle on-timeout); does nothing when prefs
                        "ink" is false or it already runs
-  shoji-ink stop       fade out (hypridle on-resume, and before the lock)
+  shoji-ink stop       fade out (hypridle on-resume)
+  shoji-ink lock       lock the screen; when the ink shows, the lock screen keeps its last frame
+                       behind the clock, so stepping away flows into the lock (hypridle's lock step)
   shoji-ink preview    the same, now; a click or a key closes it
   shoji-ink frame OUT.png [SECONDS]   one frame as a picture, for docs and tests
 
@@ -20,11 +22,15 @@ import random
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HOME = Path.home()
 RUN = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
 PID = RUN / "shoji-ink.pid"
+CACHE = HOME / ".cache/shoji"
+LOCK_FRAME = CACHE / "lock-ink.png"
+LOCK_CONF = CACHE / "hyprlock-ink.conf"
 THEME = HOME / ".config/shoji/current.json"
 PREFS = HOME / ".config/shoji/prefs.json"
 FPS = 8             # a drop takes twelve seconds to spread: more frames would only cost power
@@ -190,6 +196,8 @@ def show(preview=False):
             Layer.set_anchor(win, edge, True)
         Layer.set_keyboard_mode(win, Layer.KeyboardMode.EXCLUSIVE if preview else Layer.KeyboardMode.NONE)
         drops = Drops(seed=i)
+        if i == 0:
+            state["first"] = (win, drops)
 
         def draw(w, cr, drops=drops):
             t = GLib.get_monotonic_time() / 1e6 - start
@@ -224,6 +232,19 @@ def show(preview=False):
         win.show_all()
         wins.append(win)
 
+    def keep_frame():
+        """SIGUSR1 (shoji-ink lock): the first monitor's picture, full size, for the lock screen."""
+        win, drops = state["first"]
+        a = win.get_allocation()
+        t = GLib.get_monotonic_time() / 1e6 - start
+        surf = cairo.ImageSurface(cairo.FORMAT_RGB24, a.width, a.height)
+        paint(cairo.Context(surf), a.width, a.height, t, drops.at(t, a.width, a.height), pal, still=still)
+        LOCK_FRAME.parent.mkdir(parents=True, exist_ok=True)
+        surf.write_to_png(str(LOCK_FRAME))
+        Gtk.main_quit()   # no fade: the lock screen takes over this very picture
+        return False
+
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, keep_frame)
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, leave)
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, leave)
     if still:
@@ -242,6 +263,43 @@ def running():
         return None
 
 
+def lock_config(conf):
+    """hyprlock's config with the ink frame as the background: no blur, no dimming (it is calm)."""
+    out, in_bg = [], False
+    for line in conf.splitlines():
+        s = line.strip()
+        if s.startswith("background"):
+            in_bg = True
+        elif in_bg and s == "}":
+            in_bg = False
+        elif in_bg and s.startswith("path"):
+            line = f"    path = {LOCK_FRAME}"
+        elif in_bg and s.startswith(("blur_passes", "brightness")):
+            line = "    " + s.split("=")[0].strip() + (" = 0" if s.startswith("blur") else " = 1.0")
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
+def lock():
+    if subprocess.run(["pidof", "hyprlock"], capture_output=True).returncode == 0:
+        return   # locked already
+    pid = running()
+    if pid:
+        LOCK_FRAME.unlink(missing_ok=True)
+        os.kill(pid, signal.SIGUSR1)
+        for _ in range(40):   # the frame is written within a few frames
+            if not running() and LOCK_FRAME.exists():
+                break
+            time.sleep(0.05)
+        if LOCK_FRAME.exists():
+            try:
+                LOCK_CONF.write_text(lock_config((HOME / ".config/hypr/hyprlock.conf").read_text()))
+                os.execvp("hyprlock", ["hyprlock", "-c", str(LOCK_CONF)])
+            except OSError:
+                pass
+    os.execvp("loginctl", ["loginctl", "lock-session"])
+
+
 def main():
     args = sys.argv[1:] or ["preview"]
     cmd = args[0]
@@ -257,6 +315,8 @@ def main():
             show(preview=cmd == "preview")
         finally:
             PID.unlink(missing_ok=True)
+    elif cmd == "lock":
+        lock()
     elif cmd == "stop":
         pid = running()
         if pid:

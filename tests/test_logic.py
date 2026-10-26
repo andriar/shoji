@@ -256,6 +256,16 @@ class Ink(unittest.TestCase):
         r = subprocess.run([sys.executable, "-c", code, str(REPO / "bin/shoji-ink")], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr[-300:])
 
+    def test_lock_config_takes_the_ink_frame(self):
+        conf = (REPO / "config/hypr/hyprlock.conf").read_text()
+        out = self.ink.lock_config(conf)
+        bg = out[out.index("background {"):out.index("}", out.index("background {"))]
+        self.assertIn(f"path = {self.ink.LOCK_FRAME}", bg)
+        self.assertIn("blur_passes = 0", bg)
+        self.assertIn("brightness = 1.0", bg)
+        self.assertEqual(out.count("\n"), conf.rstrip("\n").count("\n") + 1)   # nothing else moved
+        self.assertIn("lock-enso.png", out)
+
     def test_ink_off_in_prefs_never_starts(self):
         with tempfile.TemporaryDirectory() as d:
             self.ink.PREFS = Path(d) / "prefs.json"
