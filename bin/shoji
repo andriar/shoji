@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Shoji (障子) — one palette file for the whole Hyprland desktop.
 
-Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome|date-kanji|weekday-kanji]
+Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome|season|date-kanji|weekday-kanji]
   apply NAME    switch to a palette (no NAME: re-apply the saved one, quiet; Hyprland autostart)
   list          palettes, the current one marked
   toggle        dark <-> light (Hiru, or Yuki for Aizome)
@@ -11,6 +11,7 @@ Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome
   vscode        install the Shoji VS Code theme (once; every apply updates it)
   spotify       make Shoji the spicetify theme (then run `spicetify apply` when Spotify can restart)
   chrome        where the Chrome theme is and how to load it
+  season        the season for the seasonal accent: spring 紅梅 / summer 青竹 / autumn 紅葉 / winter 白群
   date-kanji    十月二十四日 · 土曜日   (lock screen)
   weekday-kanji 土                    (bar)
 
@@ -106,6 +107,47 @@ def contrast(a, b):
     return (la + 0.05) / (lb + 0.05)
 
 
+# 季節 seasonal accent (prefs "seasonal": true): the accent becomes the season's traditional colour,
+# shifted in lightness until it holds 3:1 on the palette's ground. Changes at 立春, 立夏, 立秋, 立冬.
+SEASONS = [((2, 4), "spring", "紅梅", "#e16b8c"), ((5, 5), "summer", "青竹", "#00896c"),
+           ((8, 7), "autumn", "紅葉", "#c9573c"), ((11, 7), "winter", "白群", "#78c2c4")]
+PREFS = CFG / "shoji/prefs.json"
+
+
+def season(day=None):
+    """(id, kanji, colour) of the season `day` falls in."""
+    d = day or datetime.date.today()
+    current = SEASONS[-1]  # January to 3 February: still winter
+    for start, *rest in SEASONS:
+        if (d.month, d.day) >= start:
+            current = (start, *rest)
+    return current[1:]
+
+
+def seasonal_on():
+    try:
+        return bool(json.loads(PREFS.read_text()).get("seasonal"))
+    except (OSError, ValueError):
+        return False
+
+
+def fit_accent(colour, bg, text, dark):
+    """Keep the hue, move the lightness (up on dark grounds, down on light) until the accent holds
+    3:1 on the ground and its label (the ground or the text colour, whichever contrasts more) 4.5:1."""
+    import colorsys
+    r, g, b = (c / 255 for c in rgb(colour))
+    h, l, sat = colorsys.rgb_to_hls(r, g, b)
+    step = 0.02 if dark else -0.02
+    best = colour
+    for _ in range(40):
+        best = hexc(tuple(round(c * 255) for c in colorsys.hls_to_rgb(h, l, sat)))
+        on = bg if contrast(bg, best) >= contrast(text, best) else text
+        if contrast(best, bg) >= 3.2 and contrast(on, best) >= 4.5:  # a mark on the ground, a label on it
+            break
+        l = min(0.92, max(0.08, l + step))
+    return best, on
+
+
 def tokens(name):
     """Palette -> every token the configs use (Catppuccin-style names kept for old CSS)."""
     p = PALETTES[name]
@@ -122,6 +164,9 @@ def tokens(name):
         accent=p["accent"], accent2=p["accent"], on_accent=p["on_accent"], accent_text=p["accent"],
         ok=a[1], alert=a[0], warn=a[2], info=a[3],
     )
+    if seasonal_on():
+        acc, on = fit_accent(season()[2], bg, text, dark)
+        t.update(accent=acc, accent2=acc, accent_text=acc, peach=acc, on_accent=on)
     return t
 
 
@@ -1002,6 +1047,9 @@ def main():
     elif cmd == "date-kanji":
         d = datetime.date.today()
         print(f"{kanji_num(d.month)}月{kanji_num(d.day)}日 · {WEEK_K[d.weekday()]}曜日")
+    elif cmd == "season":
+        sid, kanji, colour = season()
+        print(f"{sid} {kanji} {colour}")
     elif cmd == "weekday-kanji":
         print(WEEK_K[datetime.date.today().weekday()])
     elif cmd in ("apply", "toggle"):

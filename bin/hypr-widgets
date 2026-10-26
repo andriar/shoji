@@ -1216,6 +1216,15 @@ class ThemeManager(Popover):
         num.connect("clicked", lambda *_: self.toggle_numerals())
         opts.pack_end(num, False, False, 0)
         self.box.pack_start(opts, False, False, 4)
+        season = (sh(SHOJI, "season").split() + ["", "", ""])[:3]
+        seas = Gtk.Box(spacing=10)
+        sw2 = Gtk.Switch(active=bool(pr.get("seasonal")))
+        sw2.set_valign(Gtk.Align.CENTER)
+        sw2.connect("notify::active", lambda s, _p: self.set_seasonal(s.get_active(), season[0]))
+        seas.pack_start(sw2, False, False, 0)
+        seas.pack_start(label(f"Seasonal accent: 紅梅 spring · 青竹 summer · 紅葉 autumn · 白群 winter "
+                              f"(now {season[1]})", "muted"), False, False, 0)
+        self.box.pack_start(seas, False, False, 0)
         self.box.pack_start(label(f"Same from a terminal: shoji apply {cur} · shoji list · Super+Shift+T", "mono"), False, False, 2)
 
     def apply(self, name):
@@ -1223,6 +1232,11 @@ class ThemeManager(Popover):
         if p["dark"]:
             save_prefs(dark=name)
         subprocess.run([SHOJI, "apply", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.show()
+
+    def set_seasonal(self, on, season_id):
+        save_prefs(seasonal=on, season=season_id)
+        subprocess.run([SHOJI, "apply"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.show()
 
     def toggle_numerals(self):
@@ -1991,6 +2005,11 @@ class Popovers:
         Only at the change of period (or when the switch is turned on), so a palette picked
         by hand stays until the next sunrise or sunset."""
         pr = prefs()
+        if pr.get("seasonal"):  # a new season (立春, 立夏, 立秋, 立冬): re-apply for its accent
+            sid = (sh(SHOJI, "season").split() or [""])[0]
+            if sid and pr.get("season") != sid:
+                save_prefs(season=sid)
+                spawn(SHOJI, "apply")
         if not pr.get("follow_sun"):
             return True
         period = "day" if 6 <= datetime.datetime.now().hour < 18 else "night"
