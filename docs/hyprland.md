@@ -127,6 +127,16 @@ bindel = , XF86MonBrightnessUp, exec, ~/.local/bin/hypr-osd bright-up
 bindel = , XF86MonBrightnessDown, exec, ~/.local/bin/hypr-osd bright-down
 ```
 
+## Idle: the ink screen, then the lock
+
+`config/hypr/hypridle.conf` is a whole hypridle setup: at 8 minutes `shoji-ink` lets the desktop
+sink into the palette's ground while drops of ink bloom on it (with the time and the 候 in a
+corner); at 10 the lock; at 15 the screen goes off. Any input before the lock takes the ink away.
+Copy it to `~/.config/hypr/hypridle.conf` (or add its first listener to yours, and put
+`~/.local/bin/shoji-ink stop;` before your lock command), then restart hypridle.
+`shoji-ink preview` shows it now (a click or a key closes it). With reduced motion the drops
+stand still. It uses under a tenth of one CPU core while it shows (8 frames a second).
+
 ## GNOME on the same machine
 
 `~/.config/gtk-*` is shared with GNOME. If you also log into GNOME, add an autostart entry that runs

@@ -228,5 +228,36 @@ class Language(unittest.TestCase):
         self.assertEqual(base.T("today"), "today")
 
 
+class Ink(unittest.TestCase):
+    def setUp(self):
+        self.ink = load("shoji-ink")
+
+    def test_drops_are_seeded_and_fade_away(self):
+        a, b = self.ink.Drops(seed=3), self.ink.Drops(seed=3)
+        self.assertEqual([d["x"] for d in a.at(30, 1000, 600)], [d["x"] for d in b.at(30, 1000, 600)])
+        late = a.at(300, 1000, 600)
+        self.assertTrue(all(300 - d["born"] < self.ink.LIFE_S for d in late))
+        self.assertLessEqual(len(late), self.ink.LIFE_S / (self.ink.EVERY_S * 0.7) + 1)
+
+    def test_a_frame_paints_the_ground(self):
+        import cairo
+        surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, 64, 36)
+        pal = {"bg": "#102030", "ink": "#ffffff", "muted": "#888888", "accent": "#eb6101", "dark": True}
+        self.ink.paint(cairo.Context(surf), 64, 36, 60, [], pal)
+        b, g, r, a = surf.get_data()[:4]
+        self.assertEqual((r, g, b, a), (0x10, 0x20, 0x30, 255))
+
+    def test_ink_off_in_prefs_never_starts(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.ink.PREFS = Path(d) / "prefs.json"
+            self.ink.PREFS.write_text('{"ink": false}')
+            self.ink.PID = Path(d) / "ink.pid"
+            from unittest import mock
+            with mock.patch.object(self.ink.subprocess, "Popen") as popen, \
+                    mock.patch.object(sys, "argv", ["shoji-ink", "start"]):
+                self.ink.main()
+            popen.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

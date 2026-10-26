@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+"""墨 Ink: a quiet screen for when you step away. The desktop fades into the palette's ground and
+drops of sumi ink bloom on it, slowly, one at a time; now and then one in the accent. The time
+and the 候 of the day sit small in a corner. Any input (hypridle's on-resume) takes it away.
+
+  shoji-ink start      fade in on every monitor (hypridle on-timeout); does nothing when prefs
+                       "ink" is false or it already runs
+  shoji-ink stop       fade out (hypridle on-resume, and before the lock)
+  shoji-ink preview    the same, now; a click or a key closes it
+  shoji-ink frame OUT.png [SECONDS]   one frame as a picture, for docs and tests
+
+With reduced motion (Super+Shift+M) the drops stand still and only the clock changes.
+"""
+import datetime
+import importlib.machinery
+import json
+import math
+import os
+import random
+import signal
+import subprocess
+import sys
+from pathlib import Path
+
+HOME = Path.home()
+RUN = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+PID = RUN / "shoji-ink.pid"
+THEME = HOME / ".config/shoji/current.json"
+PREFS = HOME / ".config/shoji/prefs.json"
+FPS = 8             # a drop takes twelve seconds to spread: more frames would only cost power
+FADE_S = 3.0        # the desktop sinks into the ground over three seconds (ma: no sudden black)
+EVERY_S = 5.0       # a new drop
+GROW_S, LIFE_S = 12.0, 34.0
+
+
+def prefs():
+    try:
+        return json.loads(PREFS.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def palette():
+    try:
+        t = json.loads(THEME.read_text())
+        return {"bg": t["bg"], "ink": t["text"], "muted": t["muted"], "accent": t["accent"], "dark": t["dark"]}
+    except (OSError, ValueError, KeyError):
+        return {"bg": "#1c1b19", "ink": "#e8e2d4", "muted": "#9a9384", "accent": "#eb6101", "dark": True}
+
+
+def rgb(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+
+
+def season_line(now):
+    try:
+        shoji = importlib.machinery.SourceFileLoader("shoji_ko", str(HOME / ".local/bin/shoji")).load_module()
+        return shoji.micro_season(now.date())[0]
+    except Exception:  # an older shoji, or none: the clock alone
+        return ""
+
+
+class Drops:
+    """Where and when each drop falls. Seeded, so a frame at second t is always the same picture."""
+
+    def __init__(self, seed=None):
+        self.rng = random.Random(seed)
+        self.items = []
+        self.next_at = 0.0
+
+    def at(self, t, w, h):
+        while self.next_at <= t:
+            r = min(w, h) * self.rng.uniform(0.06, 0.2)
+            self.items.append({"born": self.next_at, "x": self.rng.uniform(0.12, 0.88) * w,
+                               "y": self.rng.uniform(0.15, 0.8) * h, "r": r,
+                               "accent": self.rng.random() < 0.14, "a": self.rng.uniform(0.07, 0.16),
+                               # the edge: a few slow waves, so it spreads like ink on washi, not a disc
+                               "waves": [(k, self.rng.uniform(0.05, 0.14) / k ** 0.7, self.rng.uniform(0, 2 * math.pi))
+                                         for k in range(2, 7)]})
+            self.next_at += EVERY_S * self.rng.uniform(0.7, 1.3)
+        self.items = [d for d in self.items if t - d["born"] < LIFE_S]
+        return [d for d in self.items if d["born"] <= t]
+
+
+def ease_out(x):
+    return 1 - (1 - x) ** 3
+
+
+def paint(cr, w, h, t, drops, pal, still=False, now=None, season=""):
+    """One frame. t: seconds since start. still: reduced motion (no fade, drops at rest)."""
+    import cairo
+    fade = 1.0 if still else min(1.0, t / FADE_S)
+    cr.set_operator(cairo.OPERATOR_SOURCE)
+    cr.set_source_rgba(*rgb(pal["bg"]), fade)
+    cr.paint()
+    cr.set_operator(cairo.OPERATOR_OVER)
+    for d in drops:
+        age = LIFE_S * 0.5 if still else t - d["born"]
+        grow = ease_out(min(1.0, age / GROW_S))
+        fall = 1.0 - max(0.0, (age - GROW_S) / (LIFE_S - GROW_S)) ** 2   # fades after it has spread
+        a = d["a"] * fall * fade * (1.6 if d["accent"] else 1.0)
+        r = max(1.0, d["r"] * (0.35 + 0.65 * grow))
+        col = rgb(pal["accent"] if d["accent"] else pal["ink"])
+        g = cairo.RadialGradient(d["x"], d["y"], 0, d["x"], d["y"], r * 1.25)
+        g.add_color_stop_rgba(0.0, *col, a * (1.3 - 0.7 * grow))   # dense where it fell, then thins
+        g.add_color_stop_rgba(0.6, *col, a * 0.6)
+        g.add_color_stop_rgba(0.78, *col, a * 0.85)   # sumi dries a little darker at its rim
+        g.add_color_stop_rgba(1.0, *col, 0)
+        cr.set_source(g)
+        for i in range(73):
+            th = 2 * math.pi * i / 72
+            rr = r * (1 + grow * sum(amp * math.sin(k * th + ph + age * 0.02 * k) for k, amp, ph in d["waves"]))
+            (cr.move_to if i == 0 else cr.line_to)(d["x"] + rr * math.cos(th), d["y"] + rr * math.sin(th))
+        cr.close_path()
+        cr.fill()
+    if now is not None:
+        clock(cr, w, h, fade, pal, now, season)
+
+
+def clock(cr, w, h, fade, pal, now, season):
+    """The time and the 候, small, bottom left."""
+    import cairo
+    cr.set_source_rgba(*rgb(pal["muted"]), 0.85 * fade)
+    cr.select_font_face("Kaisei Opti", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+    cr.set_font_size(max(18, h * 0.028))
+    cr.move_to(w * 0.05, h - w * 0.03)
+    cr.show_text(now.strftime("%H:%M") + (f"   {season}" if season else ""))
+
+
+def frame(out, seconds):
+    import cairo
+    w, h = 1280, 720
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, w, h)
+    cr = cairo.Context(surf)
+    drops = Drops(seed=7)
+    now = datetime.datetime(2026, 10, 26, 21, 40)
+    paint(cr, w, h, seconds, drops.at(seconds, w, h), palette(), now=now, season=season_line(now))
+    surf.write_to_png(out)
+
+
+def show(preview=False):
+    import cairo
+    import gi
+    gi.require_version("Gtk", "3.0")
+    gi.require_version("GtkLayerShell", "0.1")
+    from gi.repository import Gdk, GLib, Gtk, GtkLayerShell as Layer
+
+    pal = palette()
+    still = bool(prefs().get("reduced_motion"))
+    start = GLib.get_monotonic_time() / 1e6
+    state = {"season": season_line(datetime.datetime.now()), "leaving": None}
+    wins = []
+
+    def leave(*_):
+        if state["leaving"] is None:
+            state["leaving"] = GLib.get_monotonic_time() / 1e6
+            if still:
+                Gtk.main_quit()
+        return True
+
+    def tick():
+        now_s = GLib.get_monotonic_time() / 1e6
+        if state["leaving"] is not None and now_s - state["leaving"] > 0.4:
+            Gtk.main_quit()
+            return False
+        for win in wins:
+            win.queue_draw()
+        return True
+
+    display = Gdk.Display.get_default()
+    for i in range(display.get_n_monitors()):
+        mon = display.get_monitor(i)
+        win = Gtk.Window()
+        win.set_app_paintable(True)
+        if win.get_screen().get_rgba_visual():
+            win.set_visual(win.get_screen().get_rgba_visual())
+        Layer.init_for_window(win)
+        Layer.set_namespace(win, "shoji-ink")
+        Layer.set_layer(win, Layer.Layer.OVERLAY)
+        Layer.set_monitor(win, mon)
+        Layer.set_exclusive_zone(win, -1)
+        for edge in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):
+            Layer.set_anchor(win, edge, True)
+        Layer.set_keyboard_mode(win, Layer.KeyboardMode.EXCLUSIVE if preview else Layer.KeyboardMode.NONE)
+        drops = Drops(seed=i)
+
+        def draw(w, cr, drops=drops):
+            t = GLib.get_monotonic_time() / 1e6 - start
+            alloc = w.get_allocation()
+            out = 1.0
+            if state["leaving"] is not None:   # a short fade back to the desktop
+                out = max(0.0, 1 - (GLib.get_monotonic_time() / 1e6 - state["leaving"]) / 0.4)
+            w_, h_ = alloc.width, alloc.height
+            # the soft drops at half size, scaled up: a quarter of the pixels, the same picture
+            small = cairo.ImageSurface(cairo.FORMAT_ARGB32, max(1, w_ // 2), max(1, h_ // 2))
+            sc = cairo.Context(small)
+            sc.scale(0.5, 0.5)
+            paint(sc, w_, h_, t, drops.at(t, w_, h_), pal, still=still)
+            cr.push_group()
+            cr.save()
+            cr.scale(2, 2)
+            cr.set_source_surface(small, 0, 0)
+            cr.get_source().set_filter(cairo.FILTER_BILINEAR)
+            cr.set_operator(cairo.OPERATOR_SOURCE)
+            cr.paint()
+            cr.restore()
+            clock(cr, w_, h_, 1.0 if still else min(1.0, t / FADE_S), pal, datetime.datetime.now(), state["season"])
+            cr.pop_group_to_source()
+            cr.paint_with_alpha(out)
+            return True
+
+        win.connect("draw", draw)
+        win.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.KEY_PRESS_MASK)
+        win.connect("button-press-event", leave)
+        win.connect("key-press-event", leave)
+        win.show_all()
+        wins.append(win)
+
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, leave)
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, leave)
+    if still:
+        GLib.timeout_add_seconds(20, tick)   # only the clock changes
+    else:
+        GLib.timeout_add(1000 // FPS, tick)
+    Gtk.main()
+
+
+def running():
+    try:
+        pid = int(PID.read_text())
+        os.kill(pid, 0)
+        return pid
+    except (OSError, ValueError):
+        return None
+
+
+def main():
+    args = sys.argv[1:] or ["preview"]
+    cmd = args[0]
+    if cmd in ("start", "preview"):
+        if running() or (cmd == "start" and prefs().get("ink") is False):
+            return
+        if os.environ.get("SHOJI_INK_CHILD") != "1":   # detach, so hypridle never waits on us
+            subprocess.Popen([sys.argv[0], *args], env={**os.environ, "SHOJI_INK_CHILD": "1"},
+                             start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        PID.write_text(str(os.getpid()))
+        try:
+            show(preview=cmd == "preview")
+        finally:
+            PID.unlink(missing_ok=True)
+    elif cmd == "stop":
+        pid = running()
+        if pid:
+            os.kill(pid, signal.SIGTERM)
+    elif cmd == "frame" and len(args) > 1:
+        frame(args[1], float(args[2]) if len(args) > 2 else 12.0)
+    else:
+        sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    main()
