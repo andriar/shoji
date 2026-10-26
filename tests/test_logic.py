@@ -434,6 +434,16 @@ class EyeRest(unittest.TestCase):
         self.assertFalse(self.make(on=False).due(30 * 60))
 
 
+class Css(unittest.TestCase):
+    def test_letter_spacing_stays_under_one_pixel(self):
+        """From 1px, GTK 3 doubles a label's height in an on-screen window (not offscreen, so no
+        rendering test sees it): the cards' text sat 8 px low."""
+        import re
+        for f in (REPO / "widgets/shoji_widgets").glob("*.py"):
+            for value in re.findall(r"letter-spacing:\s*([0-9.]+)px", f.read_text()):
+                self.assertLess(float(value), 1.0, f.name)
+
+
 class Accessibility(unittest.TestCase):
     def test_glyph_buttons_take_their_tooltip_as_name(self):
         from shoji_widgets import base

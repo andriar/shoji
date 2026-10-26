@@ -236,6 +236,8 @@ def rgba(h, a=1.0):
     return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)) + (a,)
 
 
+# letter-spacing stays under 1px: from 1px up, GTK 3 asks twice the text's height for the label in an
+# on-screen window (offscreen it does not), which pushed card text down; 0.99px looks the same
 CSS = b"""
 * { font-family: "Zen Kaku Gothic New", "lucide", "JetBrainsMono Nerd Font"; font-size: 12px; }
 .panel {
@@ -251,7 +253,7 @@ button, .row, .app-row, .key-row, .sheet-row, .chip, .toggle, .day, .agenda-row,
               border-color 150ms ease-out;
 }
 .muted { color: @muted; }
-.label-small { color: @muted; font-size: 10.5px; letter-spacing: 1px; }
+.label-small { color: @muted; font-size: 10.5px; letter-spacing: 0.99px; }
 .mono { font-family: "JetBrainsMono Nerd Font"; font-size: 11px; color: @muted; }
 .display { font-family: "Kaisei Opti"; font-weight: 700; font-size: 22px; color: @text; }
 .title { font-size: 13px; font-weight: 700; }
@@ -262,8 +264,8 @@ button, .row, .app-row, .key-row, .sheet-row, .chip, .toggle, .day, .agenda-row,
 .day { min-width: 30px; min-height: 22px; border-radius: 4px; font-size: 12px; color: @text; }
 .day.other { color: alpha(@text, 0.32); }
 .day.past { color: alpha(@text, 0.6); }
-.season { font-family: "Kaisei Opti"; font-size: 12px; color: @muted; letter-spacing: 1px; }
-.haiku { font-family: "Kaisei Opti"; font-size: 12px; color: @muted; letter-spacing: 1px; }
+.season { font-family: "Kaisei Opti"; font-size: 12px; color: @muted; letter-spacing: 0.99px; }
+.haiku { font-family: "Kaisei Opti"; font-size: 12px; color: @muted; letter-spacing: 0.99px; }
 .day.today { background: @accent; color: @on_accent; font-weight: 700; }
 button.day { padding: 0; border: none; box-shadow: none; background-image: none; }
 .agenda button.day { min-height: 25px; }  /* room for the event dot */
@@ -368,7 +370,7 @@ list { background: transparent; }
 .cap { font-family: "JetBrainsMono Nerd Font"; font-size: 11px; color: @text; background: @group;
        border: 1px solid @edge; border-bottom-width: 2px; border-radius: 4px; padding: 1px 7px; min-width: 12px; }
 .key-row:selected .cap { border-color: alpha(@accent, 0.6); }
-.key-head { font-size: 10.5px; letter-spacing: 1px; color: @muted; padding: 18px 10px 4px; }
+.key-head { font-size: 10.5px; letter-spacing: 0.99px; color: @muted; padding: 18px 10px 4px; }
 .sheet-row { background: transparent; border: none; box-shadow: none; border-radius: 8px; padding: 3px 8px;
              min-height: 26px; }
 .sheet-row:hover { background: @hover; }
