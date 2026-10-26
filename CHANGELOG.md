@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.0 — 2026-10-26
+
+- 設 Preferences: every prefs.json choice in one popover, a line on what each does.
+- 仕舞い the end of the day: a card at 17:00 on weekdays; Done for today keeps Silent on until 07:00.
+- 通 notification batches (30 or 60 minutes) with one card of what came in, by app.
+- 遠 rest your eyes: 20 seconds of looking far away every 20 minutes at the screen (optional).
+- 俳句: a haiku of the season fills a free day in Koyomi.
+- The ink screen flows into the lock screen (`shoji-ink lock`).
+- `shoji slack`: the palette as Slack's four-colour custom theme.
+- Icon buttons have names for screen readers.
+- Fixed, found by running everything live in a nested Hyprland:
+  - the ink screen never showed (GDK 4 was loaded before GTK 3);
+  - Alt+Tab did not switch windows (focus was sent while the cards still held the keyboard);
+  - Silent stayed on for good when hypr-widgets restarted during a meeting;
+  - the Rin bell switch did nothing until the next login;
+  - cards kept a taller first size.
+
 ## 0.5.0 — 2026-10-26
 
 - 墨 Ink: an idle screen before the lock. The desktop sinks into the palette's ground and slow

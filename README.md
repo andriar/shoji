@@ -62,7 +62,18 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
   5-minute rest (休) follows; Koyomi counts the day's sessions (座 ×3).
 - **墨 Ink** when you step away: after 8 idle minutes the desktop sinks into the palette's ground
   and slow drops of ink bloom on it, the time and the day's 候 in a corner; any input brings the
-  desktop back, the lock follows at 10 (`config/hypr/hypridle.conf`, `shoji-ink preview`).
+  desktop back. At 10 minutes the lock screen takes over that very picture, the clock and ensō
+  appearing over the same drops (`config/hypr/hypridle.conf`, `shoji-ink preview`).
+
+  ![墨 Ink: soft, irregular drops of ink spread on the palette's ground, the time and 霜始降 in a corner](docs/screenshots/ink.gif)
+- **仕舞い the end of the day** (17:00 on weekdays, or 18:00, or off): one card with the day in a
+  line (events, zazen, what waits in the panel) and tomorrow's first event; **Done for today** keeps
+  Silent on until 07:00, and the morning note counts what waited.
+- **通 Notifications in batches** (optional, every 30 or 60 minutes): Silent stays on and one card
+  says what came in, by app; critical notifications still come through at once.
+- **遠 Rest your eyes** (optional): every 20 minutes at the screen, the ensō asks you to look at
+  something far away for 20 seconds. Time away starts the count again; meetings put it off.
+- **俳句**: a haiku of the season (Bashō, Buson, Issa, Shiki) fills a free day in Koyomi.
 - **Ensō** for volume, mic and brightness, shown even with Do Not Disturb on.
 - **Rin (鈴)**: a small synthesised temple bell for critical notifications only.
 - **Quiet in meetings**: Silent turns itself on while a calendar event runs or the screen is shared,
@@ -83,12 +94,16 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
 - **Screenshots** (PrtSc): copied and saved, then a small card in the corner with the picture and
   Open / Folder / Delete; it leaves by itself after 6 s.
 - **Tabbed windows** (Super+T) as paper tabs; **one key per app** (Super+K Slack, Super+B browser…).
-- **Theme manager** (Super+Shift+T): six palettes, follow the sun, and **your own**: pick a ground and
+- **Theme manager** (Super+Shift+T): eight palettes, follow the sun, and **your own**: pick a ground and
   an accent from traditional colours (or any hex); contrast is checked live and the rest is derived.
+- **設 Preferences** (from the theme manager, or `hypr-pop prefs`): language (English, Indonesia,
+  日本語), workspace numbers, the end of the day, notification batches and every switch below, each
+  with a line on what it does. Icon buttons carry names for screen readers.
 
 **Everything in one palette**
 - GTK3 apps (Thunar first), Qt (qt6ct), ghostty, starship, btop, fzf, bat, delta, fuzzel, hyprlock,
-  wlogout, Shoji's own folder icons, and themes for **VS Code, Spotify (spicetify) and Chrome**.
+  wlogout, Shoji's own folder icons, and themes for **VS Code, Spotify (spicetify), Chrome and
+  Slack** (`shoji slack` copies the four colours Slack's custom theme takes).
 - **Six palettes**: 藍染 Aizome (indigo · gold, default), 夜 Yoru (ink · vermilion), 夜桜 Yozakura
   (night · sakura), 苔 Koke (moss), 昼 Hiru (washi, light), 雪 Yuki (snow, light), and two at high
   contrast (WCAG AAA, 7:1): 墨 Sumi (ink) and 白 Shiro (paper).
@@ -99,8 +114,8 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
 the release to `~/shoji` and runs the installer, which backs up everything it replaces.
 
 ```sh
-curl -fsSLo /tmp/shoji-bootstrap.sh https://raw.githubusercontent.com/andriar/shoji/v0.5.0/bootstrap.sh
-echo "6c2d10d6fa81149c8e537e75593544adbb1145a59c38821f15b8aaf25471cb11  /tmp/shoji-bootstrap.sh" | sha256sum -c \
+curl -fsSLo /tmp/shoji-bootstrap.sh https://raw.githubusercontent.com/andriar/shoji/v0.6.0/bootstrap.sh
+echo "7e7d1ad77822300d4e7a14095428d88b7737e07b6e7eac7270766262e9e4f8f5  /tmp/shoji-bootstrap.sh" | sha256sum -c \
   && sh /tmp/shoji-bootstrap.sh            # optional: a palette name, e.g. sh /tmp/shoji-bootstrap.sh yoru
 ```
 
@@ -253,7 +268,7 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 
 Preferences live in `~/.config/shoji/prefs.json`: `"seasonal"`, `"follow_sun"`, `"weather"` (`false`,
 or `{"place": "Kyoto"}`; default: the city of your time zone), `"greet"` (one dim
-line in new terminals), `"rin"` (false = no bell), `"auto_silent"` (false = no Silent in meetings), `"reduced_motion"` (Super+Shift+M: nothing animates anywhere), `"numerals"` (`"kanji"` or `"arabic"`), `"lang"` (`"en"`, `"id"` or `"ja"`: the language of Koyomi and the popovers; the Language chip in the theme manager cycles it).
+line in new terminals), `"rin"` (false = no bell), `"auto_silent"` (false = no Silent in meetings), `"reduced_motion"` (Super+Shift+M: nothing animates anywhere), `"numerals"` (`"kanji"` or `"arabic"`), `"lang"` (`"en"`, `"id"` or `"ja"`), `"ink"` (false = no ink screen), `"shimai"` (`"17:00"`, `"18:00"` or `""`), `"batch"` (0, 30 or 60), `"eye_rest"`. The Preferences popover sets all of these.
 
 ## Make your own palette
 
@@ -295,6 +310,8 @@ whichever monitor has focus; wide sheets fit the screen). The PKGBUILD builds, i
 uninstalls cleanly in an `archlinux` container (no Arch desktop session tried yet). Koyomi and the
 popovers speak English, Indonesian and Japanese (prefs `"lang"`). The login screen
 (`shoji greeter`, [docs/greeter.md](docs/greeter.md)) is written but not yet tried at a real login.
+The idle screen, its lock, Alt+Tab, Silent in meetings, the reminder and end-of-day cards,
+notification batches and the eye rest were run live in a nested Hyprland on a headless output.
 Not yet tested: swaync 0.12 (GTK4) and real laptops. Issues and screenshots welcome.
 
 ## License
