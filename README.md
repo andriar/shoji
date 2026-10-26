@@ -1,5 +1,7 @@
 # Shoji 障子
 
+[![tests](https://github.com/andriar/shoji/actions/workflows/ci.yml/badge.svg)](https://github.com/andriar/shoji/actions/workflows/ci.yml)
+
 **A calm, Japanese-inspired desktop for [Hyprland](https://hypr.land): light through paper.**
 
 One palette drives everything you see: the bar, the panels, launcher, lock screen, terminal,
