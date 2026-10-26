@@ -10,7 +10,7 @@
             events and due tasks from Evolution Data Server (what GNOME Calendar shows).
   popovers  Sound (devices + volume), Network, Battery, Media (now playing), the Theme manager, the
             launcher and the shortcuts sheet. hypr-pop writes
-            "pop<TAB>audio|network|battery|media|theme|launcher|keys" to $FIFO;
+            "pop<TAB>audio|network|bluetooth|battery|media|theme|launcher|keys" to $FIFO;
             the same line again closes it.
 
 The surfaces live in the shoji_widgets package (widgets/ in the repo, ~/.local/share/shoji/widgets

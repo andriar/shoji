@@ -6,6 +6,8 @@
   and all of Shoji's glides, slides, fades and tweens; it survives a login and a config reload.
 - hypr-widgets split into the shoji_widgets package (base, koyomi, popovers, overlays); every
   surface renders pixel-identical to the single file it was.
+- Bluetooth popover (right-click the toggle in Koyomi): paired devices, connected first, with their
+  battery; click to connect or disconnect.
 - tests/: logic tests (seasons and contrast, meetings, the media player choice, zazen counts).
 
 ## 0.3.1 — 2026-10-26

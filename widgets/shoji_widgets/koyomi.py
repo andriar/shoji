@@ -515,7 +515,7 @@ class Calendar:
             spawn(f"{bin_}/keep-awake", "toggle")
         else:  # these open something else: close the panel first
             spawn("swaync-client", "-cp")
-            spawn(*{"network": [f"{bin_}/hypr-pop", "network"], "bluetooth": ["blueman-manager"],
+            spawn(*{"network": [f"{bin_}/hypr-pop", "network"], "bluetooth": [f"{bin_}/hypr-pop", "bluetooth"],
                     "theme": [f"{bin_}/hypr-pop", "theme"],
                     "power": ["wlogout", "-b", "4", "-p", "layer-shell"]}[key])
             return True

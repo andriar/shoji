@@ -205,6 +205,58 @@ class Network(Popover):
         return False
 
 
+class Bluetooth(Popover):
+    """Paired devices with their battery (BlueZ's Battery Percentage, e.g. headphones), connected
+    first; click connects or disconnects. Opened by right-clicking Bluetooth in Koyomi."""
+    name = "bluetooth"
+    ICONS = {"audio-headset": "headphones", "audio-headphones": "headphones", "audio-card": "speaker",
+             "input-mouse": "mouse", "input-keyboard": "keyboard", "input-gaming": "gamepad-2",
+             "phone": "smartphone", "computer": "laptop", "printer": "printer"}
+
+    @staticmethod
+    def devices():
+        out = []
+        for line in sh("bluetoothctl", "devices", "Paired").splitlines():
+            parts = line.split(" ", 2)
+            if len(parts) < 3 or parts[0] != "Device":
+                continue
+            info = dict(l.strip().split(": ", 1) for l in sh("bluetoothctl", "info", parts[1]).splitlines()
+                        if ": " in l)
+            battery = info.get("Battery Percentage", "")
+            out.append({"mac": parts[1], "name": info.get("Alias") or parts[2], "icon": info.get("Icon", ""),
+                        "connected": info.get("Connected") == "yes",
+                        "battery": battery.rsplit("(", 1)[-1].rstrip(")") if "(" in battery else ""})
+        return sorted(out, key=lambda d: (not d["connected"], d["name"].lower()))
+
+    def build(self):
+        on = "Powered: yes" in sh("bluetoothctl", "show")
+        sw = Gtk.Switch(active=on)
+        sw.set_valign(Gtk.Align.CENTER)
+        sw.connect("notify::active", lambda s, _p: (spawn("bluetoothctl", "power", "on" if s.get_active() else "off"),
+                                                     GLib.timeout_add(900, self.refresh_once)))
+        self.header("Bluetooth", sw)
+        if on:
+            devices = self.devices()
+            if not devices:
+                self.box.pack_start(label("No paired devices", "muted"), False, False, 6)
+            for d in devices:
+                meta = (f"{d['battery']}%" if d["battery"] else "") if d["connected"] else ""
+                self.row(icon(self.ICONS.get(d["icon"], "bluetooth")), d["name"], d["connected"],
+                         lambda dev=d: self.toggle(dev), meta)
+        self.footer("Bluetooth settings…", ["blueman-manager"])
+
+    def toggle(self, dev):
+        spawn("bluetoothctl", "disconnect" if dev["connected"] else "connect", dev["mac"])
+        GLib.timeout_add(2500, self.refresh_once)
+
+    def refresh_once(self):
+        if self.win.get_visible():
+            self.clear()
+            self.build()
+            self.box.show_all()
+        return False
+
+
 class ThemeManager(Popover):
     name = "theme"
     width = 720
@@ -1097,7 +1149,7 @@ class Media(Popover):
 class Popovers:
     def __init__(self):
         self.backdrop = Backdrop(self.close)
-        self.items = {cls.name: cls(self) for cls in (Sound, Network, Battery)}
+        self.items = {cls.name: cls(self) for cls in (Sound, Network, Bluetooth, Battery)}
         self.items["theme"] = ThemeManager(self)
         self.items["launcher"] = Launcher(self)
         self.items["keys"] = Keys(self)

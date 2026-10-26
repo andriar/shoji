@@ -50,7 +50,7 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
 - One container: the calendar, today's micro-season (七十二候, e.g. 霜始降 "first frost") and the
   weather in one kanji (晴 曇 雨 雪 霧 雷, 月 on a clear night, from Open-Meteo), the day's
   events and due tasks (whatever GNOME Calendar shows, Google included), quick toggles that show
-  their state, and notifications beside it.
+  their state (right-click Bluetooth for your devices and their battery), and notifications beside it.
 - Notifications stack per app like iOS; clicking one takes you to its window and workspace.
 
 **Calm on purpose**
