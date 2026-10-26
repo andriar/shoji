@@ -101,7 +101,7 @@ git clone https://github.com/andriar/shoji ~/shoji
 ```
 
 It backs up every file it replaces (`~/.local/share/shoji/backup-*.tar.gz`), downloads the fonts
-(Shippori Mincho, Zen Kaku Gothic New, Lucide), installs the scripts to `~/.local/bin`, generates
+(Kaisei Opti, Zen Kaku Gothic New, Lucide), installs the scripts to `~/.local/bin`, generates
 the configs and applies a palette. It keeps your `starship.toml`; run with `SHOJI_PROMPT=1` to use
 the Shoji prompt.
 
@@ -178,6 +178,6 @@ swaync (GTK4), multi-monitor, HiDPI scaling and real laptops. Issues and screens
 
 ## License
 
-Code: MIT (see LICENSE). Fonts keep their own licenses (SIL OFL for Shippori Mincho and
+Code: MIT (see LICENSE). Fonts keep their own licenses (SIL OFL for Kaisei Opti and
 Zen Kaku Gothic New, ISC for Lucide) and are downloaded by the installer, not bundled.
 Folder glyphs are Lucide icons (ISC).

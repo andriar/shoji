@@ -170,7 +170,7 @@ def generate(name):
     write(CFG / "hypr/theme.conf", f"# {header}\n"
           + "".join(f"${k} = rgb({v})\n" for k, v in bare.items())
           + f"$edge = rgba({bare['text']}24)\n$glass = rgba({bare['base']}9e)\n"
-          + f"$font_ui = Zen Kaku Gothic New\n$font_display = Shippori Mincho\n")
+          + f"$font_ui = Zen Kaku Gothic New\n$font_display = Kaisei Opti\n")
 
     # GTK3 CSS consumers: waybar, wlogout, swaync, hypr-widgets
     css = f"/* {header} */\n" + "".join(f"@define-color {k} {v};\n" for k, v in t.items())
@@ -743,7 +743,7 @@ def cmd_doctor(name):
     cr = contrast(t["on_accent"], t["accent"])
     print(f"  on_accent on accent {cr:5.2f}  {'pass' if cr >= 4.5 else 'FAIL'}")
     fonts = subprocess.run(["fc-list", ":", "family"], capture_output=True, text=True).stdout
-    for f in ("Shippori Mincho", "Zen Kaku Gothic New", "lucide", "JetBrainsMono Nerd Font"):
+    for f in ("Kaisei Opti", "Zen Kaku Gothic New", "lucide", "JetBrainsMono Nerd Font"):
         print(f"  font    {f:<24} {'ok' if f in fonts else 'MISSING'}")
 
 

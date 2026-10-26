@@ -147,7 +147,7 @@ tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
 #custom-ws.w1 { margin-left: 3px; }
 #custom-ws.w10 { margin-right: 3px; }
 #custom-ws {
-  font-family: "Shippori Mincho";
+  font-family: "Kaisei Opti";
   font-size: 13px;
   font-weight: 500;
   min-width: 14px;

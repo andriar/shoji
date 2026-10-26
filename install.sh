@@ -43,14 +43,14 @@ done
 tar czf "$BACKUP" -C "$HOME" "${targets[@]}" 2>/dev/null || tar czf "$BACKUP" --files-from /dev/null
 echo "$BACKUP" > "$HOME/.local/share/shoji/last-backup"
 
-say "3/6 Fonts (Shippori Mincho, Zen Kaku Gothic New, Lucide)"
+say "3/6 Fonts (Kaisei Opti, Zen Kaku Gothic New, Lucide)"
 mkdir -p "$FONTS"
 gf=https://raw.githubusercontent.com/google/fonts/main/ofl
-for f in shipporimincho/ShipporiMincho-{Regular,Medium,Bold} zenkakugothicnew/ZenKakuGothicNew-{Regular,Medium,Bold}; do
+for f in kaiseiopti/KaiseiOpti-{Regular,Medium,Bold} zenkakugothicnew/ZenKakuGothicNew-{Regular,Medium,Bold}; do
   out="$FONTS/$(basename "$f").ttf"
   [ -s "$out" ] || curl -fsSL -o "$out" "$gf/$f.ttf"
 done
-curl -fsSL -o "$FONTS/OFL-ShipporiMincho.txt" "$gf/shipporimincho/OFL.txt"
+curl -fsSL -o "$FONTS/OFL-KaiseiOpti.txt" "$gf/kaiseiopti/OFL.txt"
 curl -fsSL -o "$FONTS/OFL-ZenKakuGothicNew.txt" "$gf/zenkakugothicnew/OFL.txt"
 lucide=https://cdn.jsdelivr.net/npm/lucide-static@0.460.0
 [ -s "$FONTS/lucide.ttf" ] || curl -fsSL -o "$FONTS/lucide.ttf" "$lucide/font/lucide.ttf"

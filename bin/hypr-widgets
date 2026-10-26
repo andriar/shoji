@@ -109,12 +109,12 @@ CSS = b"""
 .muted { color: @muted; }
 .label-small { color: @muted; font-size: 10.5px; letter-spacing: 1px; }
 .mono { font-family: "JetBrainsMono Nerd Font"; font-size: 11px; color: @muted; }
-.display { font-family: "Shippori Mincho"; font-weight: 700; font-size: 22px; color: @text; }
+.display { font-family: "Kaisei Opti"; font-weight: 700; font-size: 22px; color: @text; }
 .title { font-size: 13px; font-weight: 700; }
 .sep { background: @edge; min-height: 1px; }
 
 /* koyomi */
-.wk { font-family: "Shippori Mincho"; font-size: 11px; color: @muted; }
+.wk { font-family: "Kaisei Opti"; font-size: 11px; color: @muted; }
 .day { min-width: 30px; min-height: 22px; border-radius: 5px; font-size: 12px; color: @text; }
 .day.other { color: alpha(@text, 0.32); }
 .day.today { background: @accent; color: @on_accent; font-weight: 700; }
@@ -162,9 +162,9 @@ scale slider { min-width: 14px; min-height: 14px; margin: -5px; border-radius: 7
         box-shadow: none; color: @text; }
 .card:hover { background: @hover; }
 .card.active { border-color: @accent; }
-.card .name { font-family: "Shippori Mincho"; font-weight: 700; font-size: 13px; }
+.card .name { font-family: "Kaisei Opti"; font-weight: 700; font-size: 13px; }
 .seal { background: @accent; color: @on_accent; border-radius: 5px; min-width: 28px; min-height: 28px;
-        font-family: "Shippori Mincho"; font-weight: 700; font-size: 15px; }
+        font-family: "Kaisei Opti"; font-weight: 700; font-size: 15px; }
 switch { background: alpha(@text, 0.18); border: none; border-radius: 10px; min-height: 18px; }
 switch:checked { background: @accent; }
 switch slider { background: @text; border: none; border-radius: 8px; min-width: 14px; min-height: 14px; }
@@ -316,7 +316,7 @@ class Osd:
         # number + label
         layout = self.area.create_pango_layout("")
         layout.set_markup(
-            f'<span font_family="Shippori Mincho" weight="bold" size="21pt" foreground="{t["muted"] if self.muted else t["text"]}">'
+            f'<span font_family="Kaisei Opti" weight="bold" size="21pt" foreground="{t["muted"] if self.muted else t["text"]}">'
             f'{"off" if self.muted else round(self.shown)}</span>', -1)
         w, h = layout.get_pixel_size()
         cr.move_to(c - w / 2, c - h / 2 - 6)
@@ -1037,7 +1037,7 @@ class Battery(Popover):
         def draw(_w, cr):
             enso(cr, 32, 32, 25, cap / 100, col, 5, track=rgba(t["text"], 0.12))
             lay = ring.create_pango_layout("")
-            lay.set_markup(f'<span font_family="Shippori Mincho" weight="bold" size="13pt" foreground="{t["text"]}">'
+            lay.set_markup(f'<span font_family="Kaisei Opti" weight="bold" size="13pt" foreground="{t["text"]}">'
                            f'{cap if bat else "–"}</span>', -1)
             w, h = lay.get_pixel_size()
             cr.move_to(32 - w / 2, 32 - h / 2)
