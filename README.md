@@ -55,6 +55,9 @@ means "you are here" or "this is on".
   5-minute rest (休) follows; Koyomi counts the day's sessions (座 ×3).
 - **Ensō** for volume, mic and brightness, shown even with Do Not Disturb on.
 - **Rin (鈴)**: a small synthesised temple bell for critical notifications only.
+- **Quiet in meetings**: Silent turns itself on while a calendar event runs or the screen is shared,
+  and off after, with a note of what waited. Ten minutes before an event a card offers **Join**
+  when it carries a Meet / Zoom / Teams link.
 - **Seasonal accent** (optional): 紅梅 spring, 青竹 summer, 紅葉 autumn, 白群 winter.
 - **Wallpaper**: ink-wash mountains under the sun (light palettes) or tonight's real moon phase.
 
@@ -217,7 +220,7 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 
 Preferences live in `~/.config/shoji/prefs.json`: `"seasonal"`, `"follow_sun"`, `"weather"` (`false`,
 or `{"place": "Kyoto"}`; default: the city of your time zone), `"greet"` (one dim
-line in new terminals), `"rin"` (false = no bell), `"numerals"` (`"kanji"` or `"arabic"`).
+line in new terminals), `"rin"` (false = no bell), `"auto_silent"` (false = no Silent in meetings), `"numerals"` (`"kanji"` or `"arabic"`).
 
 ## Make your own palette
 

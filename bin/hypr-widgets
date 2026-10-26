@@ -461,7 +461,7 @@ class ShotCard:
     STAY_MS, W, H = 6000, 300, 170
 
     def __init__(self):
-        self.win = layer_window("hypr-shot", Layer.Layer.OVERLAY)
+        self.win = layer_window("hypr-card", Layer.Layer.OVERLAY)
         for edge in (Layer.Edge.BOTTOM, Layer.Edge.RIGHT):
             Layer.set_anchor(self.win, edge, True)
             Layer.set_margin(self.win, edge, 16)
@@ -543,6 +543,109 @@ class ShotCard:
         self.hide()
 
 
+# ---------------------------------------------------------------- meetings
+class ReminderCard:
+    """10 minutes before a timed event: a card in the bottom right (where the screenshot card sits)
+    with the title and time, Join when the event carries a call link, and Dismiss. It stays until
+    dismissed or five minutes after the start; a soft 鈴 announces it (prefs "rin")."""
+
+    def __init__(self):
+        self.win = layer_window("hypr-card", Layer.Layer.OVERLAY)
+        for edge in (Layer.Edge.BOTTOM, Layer.Edge.RIGHT):
+            Layer.set_anchor(self.win, edge, True)
+            Layer.set_margin(self.win, edge, 16)
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.box.get_style_context().add_class("panel")
+        self.box.set_size_request(300, -1)
+        self.win.add(self.box)
+        self.timer = 0
+
+    def show(self, item):
+        load_css()
+        for c in self.box.get_children():
+            self.box.remove(c)
+        start = datetime.datetime.combine(datetime.date.today(),
+                                          datetime.datetime.strptime(item["when"], "%H:%M").time())
+        mins = max(0, round((start - datetime.datetime.now()).total_seconds() / 60))
+        self.box.pack_start(label(f"IN {mins} MIN · {item['when']}–{item['end']}", "label-small"), False, False, 0)
+        title = label(item["title"], "title")
+        title.set_ellipsize(Pango.EllipsizeMode.END)
+        self.box.pack_start(title, False, False, 0)
+        row = Gtk.Box(spacing=6)
+        if item.get("url"):
+            join = Gtk.Button(label="Join")
+            join.get_style_context().add_class("chip")
+            join.get_style_context().add_class("on")
+            join.connect("clicked", lambda *_: (spawn("xdg-open", item["url"]), self.hide()))
+            row.pack_start(join, False, False, 0)
+        later = Gtk.Button(label="Dismiss")
+        later.get_style_context().add_class("chip")
+        later.connect("clicked", lambda *_: self.hide())
+        row.pack_end(later, False, False, 0)
+        self.box.pack_start(row, False, False, 2)
+        self.box.show_all()
+        self.win.show_all()
+        if self.timer:
+            GLib.source_remove(self.timer)
+        stay = max(60, (start - datetime.datetime.now()).total_seconds() + 300)
+        self.timer = GLib.timeout_add_seconds(int(stay), self.hide)
+        rin = HOME / ".local/share/shoji/rin.wav"
+        if prefs().get("rin", True) and rin.exists():
+            spawn("pw-play", "--volume", "0.4", str(rin))
+
+    def hide(self):
+        self.timer = 0
+        self.win.hide()
+        return False
+
+
+class Meetings:
+    """Around today's timed events and screen sharing:
+    - 静 Silent turns itself on while an event is running or the screen is being shared (Hyprland's
+      screencast event), and off afterwards, with one note of how many notifications waited. If
+      Silent was already on by hand, it is left alone. prefs "auto_silent": false turns this off.
+    - a reminder card 10 minutes before each timed event."""
+
+    def __init__(self, today):
+        self.today, self.reasons, self.ours, self.held_from = today, set(), False, 0
+        self.reminded = set()
+        self.card = ReminderCard()
+        GLib.timeout_add_seconds(30, self.tick)
+        GLib.timeout_add_seconds(5, lambda: (self.tick(), False)[1])  # once the agenda has loaded
+
+    def tick(self):
+        now = datetime.datetime.now()
+        hm, soon = now.strftime("%H:%M"), (now + datetime.timedelta(minutes=10)).strftime("%H:%M")
+        timed = [i for i in self.today.items() if not i["task"] and i["when"] not in ("", "終日")]
+        self.set("meeting", any(i["when"] <= hm < i["end"] for i in timed))
+        for i in timed:
+            key = (i["uid"], i["when"])
+            if hm < i["when"] <= soon and key not in self.reminded:
+                self.reminded.add(key)
+                self.card.show(i)
+        return True
+
+    def set(self, reason, on):
+        before = bool(self.reasons)
+        (self.reasons.add if on else self.reasons.discard)(reason)
+        if bool(self.reasons) == before or prefs().get("auto_silent", True) is False:
+            return
+        if self.reasons:
+            if sh("swaync-client", "-D") == "true":
+                return  # silent already, by hand: not ours to undo
+            self.held_from = int(sh("swaync-client", "-c") or 0)
+            sh("swaync-client", "-dn")
+            self.ours = True
+        elif self.ours:
+            self.ours = False
+            if sh("swaync-client", "-D") == "true":
+                sh("swaync-client", "-df")
+            held = max(0, int(sh("swaync-client", "-c") or 0) - self.held_from)
+            if held:
+                spawn("notify-send", "-a", "Shoji", "-u", "low", "静 · Silent is off again",
+                      f"{held} notification{'s' * (held != 1)} waited while you were busy.")
+
+
 # ---------------------------------------------------------------- zazen
 class Zazen:
     """坐禅 ensō at the top centre while a focus session runs (shoji-zazen): it closes as the time
@@ -615,6 +718,12 @@ class Zazen:
         cr.move_to(c - w / 2, c - h / 2)
         PangoCairo.show_layout(cr, lay)
         return False
+
+
+# a video-call link in an event's location, description or title (Meet, Zoom, Teams, Jitsi, Whereby)
+import re  # noqa: E402
+MEETING_URL = re.compile(r"https://(?:meet\.google\.com|[\w.-]*zoom\.us|teams\.microsoft\.com|teams\.live\.com|"
+                         r"meet\.jit\.si|whereby\.com)/[^\s<>\"')]+")
 
 
 # ---------------------------------------------------------------- Koyomi agenda (EDS)
@@ -714,7 +823,12 @@ class Agenda:
         base = {"uid": comp.get_uid(), "task": False, "title": comp.get_summary() or "(untitled)",
                 "color": color}
         if isinstance(start, datetime.datetime):
-            return [{**base, "day": start.date(), "when": start.strftime("%H:%M")}]
+            end_at = end if isinstance(end, datetime.datetime) and end > start else start + datetime.timedelta(hours=1)
+            end_at = end_at if end_at.date() == start.date() else datetime.datetime.combine(start.date(), datetime.time(23, 59))
+            text = " ".join(filter(None, (comp.get_location(), comp.get_description(), comp.get_summary())))
+            link = MEETING_URL.search(text)
+            return [{**base, "day": start.date(), "when": start.strftime("%H:%M"),
+                     "end": end_at.strftime("%H:%M"), "url": link.group(0) if link else ""}]
         days = max(1, ((end if isinstance(end, datetime.date) else start) - start).days)
         return [{**base, "day": start + datetime.timedelta(days=i), "when": "終日"} for i in range(days)]
 
@@ -831,9 +945,11 @@ class TodayCache:
         self.agenda.load(today, today)
         return True
 
+    def items(self):
+        return self.agenda.day(datetime.date.today()) if self.agenda else []
+
     def write(self):
-        items = [{"when": i["when"], "title": i["title"], "task": i["task"]}
-                 for i in self.agenda.day(datetime.date.today())]
+        items = [{"when": i["when"], "title": i["title"], "task": i["task"]} for i in self.items()]
         self.OUT.parent.mkdir(parents=True, exist_ok=True)
         self.OUT.write_text(json.dumps({"day": datetime.date.today().isoformat(), "items": items},
                                        ensure_ascii=False))
@@ -2366,11 +2482,12 @@ class NotifyFocus:
     token and the app asks to be focused. Hyprland (focus_on_activate off) only marks that window
     urgent, so the click led nowhere. For a few seconds after a notification action, the window
     that turns urgent is focused (Hyprland switches to its workspace). At any other time an app
-    still cannot steal focus, e.g. in the middle of a game."""
+    still cannot steal focus, e.g. in the middle of a game. The same event socket tells Meetings
+    when the screen is being shared."""
     WINDOW_S = 3
 
-    def __init__(self):
-        self.armed = 0.0
+    def __init__(self, meetings=None):
+        self.armed, self.meetings = 0.0, meetings
         Gio.bus_get_sync(Gio.BusType.SESSION).signal_subscribe(
             None, "org.freedesktop.Notifications", "ActionInvoked", "/org/freedesktop/Notifications",
             None, Gio.DBusSignalFlags.NONE, self.on_action)
@@ -2394,6 +2511,8 @@ class NotifyFocus:
         if line is None:  # Hyprland went away
             return
         event, _, addr = line.partition(">>")
+        if event == "screencast" and self.meetings:  # "1,0" sharing a monitor, "1,1" a window, "0,…" stopped
+            self.meetings.set("screen", addr.startswith("1"))
         if event == "urgent" and time.monotonic() < self.armed:
             self.armed = 0
             sh("hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:0x{addr.removeprefix("0x")}" }})')
@@ -2434,8 +2553,8 @@ def main():
     pops = Popovers()
     watch_fifo(Osd(), pops, Zazen(), ShotCard())
     watch_swaync(Calendar())
-    focus = NotifyFocus()  # noqa: F841  (kept alive for its signal and socket)
-    today = TodayCache()  # noqa: F841
+    today = TodayCache()
+    focus = NotifyFocus(Meetings(today))  # noqa: F841  (kept alive for its signal and socket)
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, 15, Gtk.main_quit)  # SIGTERM
     try:
         Gtk.main()

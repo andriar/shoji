@@ -31,11 +31,11 @@ hl.config({ general = { border_size = 1,
 
 -- glass behind every shell surface
 hl.layer_rule({ name = "shoji-blur",
-    match = { namespace = "^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-shot)$" },
+    match = { namespace = "^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-card)$" },
     blur = true, ignore_alpha = 0.2 })
 hl.layer_rule({ name = "shoji-osd", match = { namespace = "^hypr-osd$" }, animation = "popin 90%" })
 hl.layer_rule({ name = "shoji-zazen", match = { namespace = "^hypr-zazen$" }, animation = "fade" })
-hl.layer_rule({ name = "shoji-shot", match = { namespace = "^hypr-shot$" }, animation = "slide right" })
+hl.layer_rule({ name = "shoji-card", match = { namespace = "^hypr-card$" }, animation = "slide right" })
 hl.layer_rule({ name = "shoji-pop", match = { namespace = "^hypr-pop$" }, animation = "popin 96%" })
 -- Koyomi's two halves fade together: swaync's layer covers the screen (it catches outside clicks),
 -- so a slide would move it ~1400 px against the calendar's ~480 px and they would arrive apart
@@ -109,8 +109,8 @@ general {
 }
 decoration { rounding = 16 }
 
-layerrule = blur, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-shot)$
-layerrule = ignorealpha 0.2, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-shot)$
+layerrule = blur, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-card)$
+layerrule = ignorealpha 0.2, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-card)$
 layerrule = noanim, ^(swaync-notification-window)$
 
 bind = SUPER SHIFT, T, exec, ~/.local/bin/hypr-pop theme
