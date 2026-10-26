@@ -21,7 +21,7 @@ means "you are here" or "this is on".
 |---|---|
 | ![The Aizome wallpaper: Fuji with its autumn snow, mist at its foot, the moon in tonight's phase, three pines](docs/screenshots/desktop.png) | ![The Hiru wallpaper: the same Fuji on washi under a vermilion sun](docs/screenshots/desktop-light.png) |
 
-In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session (17 s).
+In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session (19 s).
 
 ![Shoji in motion: Koyomi fades in, the Media popover, the launcher searching, the volume ensō gliding, zazen dimming the screen](docs/screenshots/demo.gif)
 

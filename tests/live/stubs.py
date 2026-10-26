@@ -18,7 +18,7 @@ LOGGED = ["loginctl", "systemctl", "systemd-inhibit", "nmcli", "bluetoothctl", "
           "brightnessctl", "wpctl", "pactl", "pw-play", "paplay", "xdg-open", "gio", "gtk-launch", "code",
           "spicetify", "google-chrome", "google-chrome-stable", "chromium", "firefox", "wlogout", "reboot",
           "poweroff", "shutdown", "hyprsunset", "wf-recorder", "pavucontrol", "nm-connection-editor",
-          "blueman-manager", "gnome-calendar", "gnome-control-center", "thunar", "ghostty", "playerctl",
+          "blueman-manager", "gnome-calendar", "gnome-control-center", "thunar", "ghostty",
           "gsettings", "dconf", "awww", "hyprpaper", "swaybg"]
 FILTERED = ["pkill", "pgrep", "pidof"]
 REAL_PGREP, REAL_KILL = "/usr/bin/pgrep", "/usr/bin/kill"

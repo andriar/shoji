@@ -297,6 +297,92 @@ def eye_rest():
     prefs(eye_rest=False)
 
 
+def use_palette(palette):
+    """Apply a palette sized on the test screen: wallpaper shown, panel placed, notices cleared."""
+    (HOME / ".cache/shoji/lock.png").unlink(missing_ok=True)   # a fresh lock picture at this size
+    screen_alone()
+    sh(sys.executable, str(BIN / "shoji"), "apply", palette, timeout=60)
+    check(f"the test screen alone after apply ({palette})", screen_alone())
+    sh(sys.executable, str(BIN / "shoji"), "apply", palette, timeout=60)   # again, sized on this screen
+    screen_alone()
+    sh(sys.executable, str(HOME / ".config/shoji/gen_swaync.py"))   # the panel's margin for this width
+    sh("swaync-client", "-R")
+    sh(os.environ["SHOJI_LIVE_AWWW"], "img", str(HOME / f"Pictures/Wallpapers/shoji-{palette}.png"),
+       "--transition-type", "none")
+    sh("pkill", "-SIGUSR2", "-x", "waybar")
+    restart_widgets()
+    sh("swaync-client", "-C")   # the palette's own notice off the desktop
+
+
+def fifo(line):
+    """A line to hypr-widgets, the way hypr-pop and hypr-osd send them."""
+    with open(RUN / "hypr-osd.fifo", "w") as f:
+        f.write(line + "\n")
+
+
+def demo_gif():
+    """The README's demo.gif: Koyomi, now playing, the launcher, the volume ensō and zazen, about
+    eighteen seconds recorded on the test screen and turned into a GIF with its own palette."""
+    print("demo.gif")
+    import threading
+    repo = Path(os.environ["SHOJI_LIVE_REPO"])
+    use_palette("aizome")
+    hypr_eval(f'hl.exec_cmd("{sys.executable} {repo}/tests/live/fakeplayer.py {WORK}/cover.png")')
+    check("the demo player plays", wait(lambda: sh("playerctl", "status") == "Playing", 15))
+    # the meeting reminder (it comes a few seconds after hypr-widgets starts) would sit in the corner
+    if wait(lambda: "hypr-card" in layers(OUT), 15):
+        check("the reminder dismissed", atspi_click("Dismiss", 20) and wait(lambda: "hypr-card" not in layers(OUT), 5))
+    for app, title, body in (("Mail", "Mei Tanaka", "Photos from the walk to the shrine"),
+                             ("Builds", "Build finished", "web-app #142 passed in 3 min")):
+        sh("notify-send", "-a", app, title, body)
+    time.sleep(7)   # their toasts go; they stay in the panel
+    time.sleep(3)   # the bar's now-playing title settles
+    frames = WORK / "frames"
+    frames.mkdir(exist_ok=True)
+    stop, stamps = threading.Event(), []
+
+    def record():
+        while not stop.is_set():
+            t0 = time.monotonic()
+            sh("grim", "-o", OUT, "-s", "0.75", "-t", "ppm", str(frames / f"{len(stamps):05d}.ppm"))
+            stamps.append(t0)
+            time.sleep(max(0.0, 0.1 - (time.monotonic() - t0)))
+    rec = threading.Thread(target=record)
+    rec.start()
+    time.sleep(1.5)
+    sh("swaync-client", "-op")                      # Koyomi fades in beside the panel
+    time.sleep(3.0)
+    sh("swaync-client", "-cp")
+    time.sleep(0.8)
+    fifo("pop\tmedia")                              # now playing
+    time.sleep(2.6)
+    fifo("pop\tmedia")
+    time.sleep(0.6)
+    for k in range(1, 6):                           # the launcher, typed into
+        fifo("pop\tlauncher\t" + "files"[:k])
+        time.sleep(0.28)
+    time.sleep(1.3)
+    fifo("pop\tlauncher")
+    time.sleep(0.6)
+    for level in range(40, 78, 5):                  # the volume ensō glides
+        fifo(f"\U000f057e\tVolume\t{level}\t0")   # as hypr-osd sends it: icon, title, percent, muted
+        time.sleep(0.16)
+    time.sleep(1.8)
+    sh(sys.executable, str(BIN / "shoji-zazen"), "start")   # zazen dims everything
+    time.sleep(2.8)
+    sh(sys.executable, str(BIN / "shoji-zazen"), "stop")
+    time.sleep(1.2)
+    stop.set()
+    rec.join()
+    fps = round((len(stamps) - 1) / (stamps[-1] - stamps[0]), 2) if len(stamps) > 1 else 10
+    out = repo / "docs/screenshots/demo.gif"
+    sh("ffmpeg", "-y", "-loglevel", "error", "-framerate", str(fps), "-i", str(frames / "%05d.ppm"),
+       "-vf", "split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle",
+       "-loop", "0", str(out), timeout=300)
+    check("demo.gif written", out.exists() and out.stat().st_size > 100_000,
+          f"{len(stamps)} frames at {fps} fps, {out.stat().st_size // 1024 if out.exists() else 0} KiB")
+
+
 def readme_shots():
     """The README's screenshots, on the demo data: the desktop in a dark and a light palette, Koyomi
     open, and the lock screen (hyprlock itself). Saved to docs/screenshots."""
@@ -308,19 +394,7 @@ def readme_shots():
     hypr_eval('hl.exec_cmd("waybar")')
     check("the bar is up", wait(lambda: "waybar" in layers(), 20))
     for name, palette in (("desktop", "aizome"), ("desktop-light", "hiru")):
-        (HOME / ".cache/shoji/lock.png").unlink(missing_ok=True)   # a fresh lock picture at this size
-        screen_alone()
-        sh(sys.executable, str(BIN / "shoji"), "apply", palette, timeout=60)
-        check(f"the test screen alone after apply ({palette})", screen_alone())
-        sh(sys.executable, str(BIN / "shoji"), "apply", palette, timeout=60)   # again, sized on this screen
-        screen_alone()
-        sh(sys.executable, str(HOME / ".config/shoji/gen_swaync.py"))   # the panel's margin for this width
-        sh("swaync-client", "-R")
-        wall = HOME / f"Pictures/Wallpapers/shoji-{palette}.png"
-        sh(awww, "img", str(wall), "--transition-type", "none")
-        sh("pkill", "-SIGUSR2", "-x", "waybar")
-        restart_widgets()
-        sh("swaync-client", "-C")   # the palette's own notice off the desktop
+        use_palette(palette)
         time.sleep(3)
         shot(name)
         if palette == "aizome":
@@ -359,7 +433,7 @@ def main():
     steps = (boot, labels_on_screen, meeting_starts, alt_tab, idle_ink_and_lock,
              lambda: meeting_ends(end_at), batches, end_of_day, eye_rest)
     if os.environ.get("SHOJI_LIVE_SHOTS") == "1":
-        steps = (boot, readme_shots)
+        steps = (boot, readme_shots, demo_gif)
     for step in steps:
         try:
             step()
