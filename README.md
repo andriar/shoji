@@ -44,7 +44,8 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
   kanji, a bell that gets a dot when something is unread.
 - Now playing: the title with four bars that move while music plays, tinted with the cover's colour
   (smooth CSS animation, no polling per frame). Click for the Media popover.
-- Readings appear only when they need you: cpu · mem from 70 %, indicators only while on.
+- Readings appear only when they need you: cpu · mem from 70 %, a Bluetooth device's battery from
+  20 % down (headphones, mouse), indicators only while on.
 
 **Koyomi (暦), under the clock**
 - One container: the calendar, today's micro-season (七十二候, e.g. 霜始降 "first frost") and the

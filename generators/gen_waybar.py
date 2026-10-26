@@ -25,7 +25,7 @@ cfg = {
     "margin-top": 6, "margin-left": 10, "margin-right": 10, "spacing": 0,
     "modules-left": ["custom/launcher", "custom/ws-watch", *WS, "hyprland/window"],
     "modules-center": ["custom/clock", "custom/notification"],
-    "modules-right": ["custom/media", "custom/record", "custom/system", "custom/keepawake", "custom/nightlight",
+    "modules-right": ["custom/media", "custom/record", "custom/system", "custom/keepawake", "custom/nightlight", "custom/btbat",
                       "network", "pulseaudio#mic", "image#vol", "pulseaudio", "image#bat", "battery", "group/tray"],
 
     "custom/launcher": {"format": L("search"), "tooltip-format": "Search apps (Super+Space)",
@@ -58,6 +58,9 @@ cfg = {
                       "interval": "once", "signal": 9, "on-click": f"{BIN}/hypr-record toggle"},
     "custom/system": {"exec": f"{BIN}/hypr-sysload", "return-type": "json", "interval": 5,
                       "on-click": f"{BIN}/hypr-toggle-app 'dev\\.hypr\\.btop' ghostty --class=dev.hypr.btop --confirm-close-surface=false -e btop"},
+    # a Bluetooth device running low (shoji-btbat prints nothing above 20 %); click = its popover
+    "custom/btbat": {"exec": f"{BIN}/shoji-btbat", "return-type": "json", "interval": 120,
+                     "on-click": f"{BIN}/hypr-pop bluetooth"},
     # on/off switches live in the Koyomi panel; the bar only shows the ones that are on
     "custom/keepawake": {"exec": f"{BIN}/keep-awake status", "return-type": "json",
                          "interval": "once", "signal": 12, "on-click": f"{BIN}/keep-awake toggle"},
@@ -136,7 +139,7 @@ tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
 
 /* every clickable thing */
 #custom-launcher, #custom-ws, #window, #custom-clock, #custom-notification, #custom-record,
-#custom-system, #custom-keepawake, #custom-nightlight, #network, #pulseaudio, #image, #battery, #tray {
+#custom-system, #custom-keepawake, #custom-nightlight, #custom-btbat, #network, #pulseaudio, #image, #battery, #tray {
   padding: 0 7px;
   margin: 3px 1px;
   border-radius: 4px;
@@ -145,7 +148,7 @@ tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
   transition: background 150ms ease-out, color 150ms ease-out;  /* none under reduced motion (below) */
 }
 #custom-launcher:hover, #custom-ws:hover, #custom-clock:hover, #custom-notification:hover,
-#custom-system:hover, #network:hover, #pulseaudio:hover, #image:hover {
+#custom-system:hover, #custom-btbat:hover, #network:hover, #pulseaudio:hover, #image:hover {
   background: @hover;
 }
 
@@ -176,6 +179,8 @@ window#waybar.empty #window { background: transparent; }
 #custom-notification { padding: 0 6px; margin-left: 0; font-family: "lucide"; font-size: 13px; color: @muted; }
 #custom-notification.notification, #custom-notification.inhibited-notification { color: @accent; }
 
+#custom-btbat { font-family: "lucide", "JetBrainsMono Nerd Font"; font-size: 11px; color: @warn; }
+#custom-btbat.critical { color: @alert; }
 #custom-media { padding: 0 10px 0 36px; font-size: 12px; color: @text; }
 #custom-media.paused { color: @muted; }
 #custom-system { font-family: "JetBrainsMono Nerd Font"; font-size: 11px; color: @muted; }
