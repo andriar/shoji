@@ -1562,6 +1562,14 @@ class Keys(Launcher):
             self.apply_mode()
 
     def show(self):
+        try:  # hyprland.lua rewrites the TSV on every reload: pick up new or changed binds
+            mtime = self.TSV.stat().st_mtime
+        except OSError:
+            mtime = None
+        if mtime != getattr(self, "tsv_mtime", None) or mtime is None:
+            self.load_apps()
+            self.fill_sheet()
+        self.tsv_mtime = mtime
         super().show()
         self.apply_mode()
 
