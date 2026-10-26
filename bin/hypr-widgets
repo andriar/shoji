@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 import cairo
@@ -1960,6 +1961,45 @@ def watch_fifo(osd, pops):
     GLib.unix_fd_add_full(GLib.PRIORITY_DEFAULT, fd, GLib.IOCondition.IN, on_data)
 
 
+class NotifyFocus:
+    """A click on a notification should bring its app forward: swaync hands the app an activation
+    token and the app asks to be focused. Hyprland (focus_on_activate off) only marks that window
+    urgent, so the click led nowhere. For a few seconds after a notification action, the window
+    that turns urgent is focused (Hyprland switches to its workspace). At any other time an app
+    still cannot steal focus, e.g. in the middle of a game."""
+    WINDOW_S = 3
+
+    def __init__(self):
+        self.armed = 0.0
+        Gio.bus_get_sync(Gio.BusType.SESSION).signal_subscribe(
+            None, "org.freedesktop.Notifications", "ActionInvoked", "/org/freedesktop/Notifications",
+            None, Gio.DBusSignalFlags.NONE, self.on_action)
+        sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+        try:
+            self.conn = Gio.SocketClient().connect(
+                Gio.UnixSocketAddress.new(str(RUN / "hypr" / sig / ".socket2.sock")), None)
+        except (GLib.Error, TypeError):
+            return
+        self.events = Gio.DataInputStream.new(self.conn.get_input_stream())
+        self.events.read_line_async(GLib.PRIORITY_DEFAULT, None, self.on_event)
+
+    def on_action(self, *_):
+        self.armed = time.monotonic() + self.WINDOW_S
+
+    def on_event(self, stream, result):
+        try:
+            line, _ = stream.read_line_finish_utf8(result)
+        except GLib.Error:
+            return
+        if line is None:  # Hyprland went away
+            return
+        event, _, addr = line.partition(">>")
+        if event == "urgent" and time.monotonic() < self.armed:
+            self.armed = 0
+            sh("hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:0x{addr.removeprefix("0x")}" }})')
+        stream.read_line_async(GLib.PRIORITY_DEFAULT, None, self.on_event)
+
+
 def watch_swaync(cal):
     bus = Gio.bus_get_sync(Gio.BusType.SESSION)
 
@@ -1994,6 +2034,7 @@ def main():
     pops = Popovers()
     watch_fifo(Osd(), pops)
     watch_swaync(Calendar())
+    focus = NotifyFocus()  # noqa: F841  (kept alive for its signal and socket)
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, 15, Gtk.main_quit)  # SIGTERM
     try:
         Gtk.main()
