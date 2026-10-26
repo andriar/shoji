@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.2.0 — 2026-10-26
+
+The zen release: a design pass argued out between three design reviews, a calmer bar, the Koyomi
+panel as one container, music on the bar, focus sessions, and the palette reaching the apps you
+live in.
+
+- **Koyomi** is one container under the clock: the calendar (click a day for its events and due
+  tasks from Evolution Data Server: Google calendars, holidays, Google Tasks), today's micro-season
+  (七十二候) by the date, quick toggles that show their state, and the notifications beside it.
+  Clicks reach it again (swaync no longer grabs the keyboard exclusively).
+- **Notifications** stack per app (swaync 0.10+, see README for 24.04), clicking one takes you to
+  its window and workspace, bot channels can be kept out of the panel (swaync-local.json), and a
+  small synthesised bell (鈴) rings for critical ones.
+- **Bar**: a bell for notifications; now playing as smooth CSS bars tinted with the cover's colour
+  plus the title; the Media popover (cover on its own colour wash, seek bar) as glass; cpu · mem
+  only from 70%.
+- **Zazen** (Super+Z): 25 minutes of focus with an ensō counting down.
+- **Look**: Kaisei Opti as the display font, one type scale and one radius scale, a brush-stroke
+  ensō on the lock screen, ink-wash ridges and tonight's moon on the wallpaper, an optional
+  seasonal accent (紅梅 / 青竹 / 紅葉 / 白群), tabbed windows (Super+T) as paper tabs.
+- **App themes** from the palette: VS Code, Spotify (spicetify), Chrome.
+- **Shortcuts sheet** (Super+/) aligned, nothing truncated, follows Hyprland reloads; screenshot
+  keys for keyboards without PrtSc (Super+Shift+P / Super+Ctrl+P).
+- Opt-in terminal greeting (`shoji greet`).
+
+## 0.1.5 – 0.1.12 — 2026-10-25
+
+- Terminal contrast on light palettes; Claude Code `auto` theme.
+- Clickable workspaces under Lua Hyprland (shoji-ws), smoother toasts and OSD.
+- Super+/ shortcuts sheet; app keys (Super+K Slack, B Chrome, D Discord, …).
+- hypr-term: new ghostty windows in ~20 ms instead of ~1 s.
+- GTK3 apps (Thunar first) follow the palette; `shoji apply` restarts Thunar in place.
+- Launcher search no longer dies after the first open.
+
 ## 0.1.4 — 2026-10-24
 
 - Launcher: Enter focuses the app's window when it is already open (Shift+Enter opens a new one).

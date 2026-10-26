@@ -42,7 +42,9 @@ folder icons and the wallpaper.
 
 | Theme manager | Koyomi | Ensō OSD |
 |---|---|---|
-| ![Theme manager with six palettes](docs/screenshots/theme-manager.png) | ![Calendar card above quick settings and notifications](docs/screenshots/koyomi.png) | ![Volume ensō in the top right](docs/screenshots/osd.png) |
+| ![Theme manager with six palettes and the seasonal accent](docs/screenshots/theme-manager.png) | ![Koyomi: calendar with a day's agenda and the quick toggles; notifications sit to its right](docs/screenshots/koyomi.png) | ![Volume ensō in the top right](docs/screenshots/osd.png) |
+
+![Wallpaper: ink-wash ridges under tonight's moon (dark palettes; the sun on light ones)](docs/screenshots/wallpaper.png)
 
 ![Lock screen: ensō around the clock, date in kanji](docs/screenshots/lock.jpg)
 
