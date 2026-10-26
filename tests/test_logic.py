@@ -33,6 +33,16 @@ class Seasons(unittest.TestCase):
         self.assertEqual(len(shoji.KO), 72)
         self.assertEqual(shoji.KO, sorted(shoji.KO))
 
+    def test_a_haiku_of_the_season_every_day(self):
+        self.assertEqual(set(shoji.HAIKU), {"spring", "summer", "autumn", "winter"})
+        seen = set()
+        for n in range(366):
+            d = datetime.date(2026, 1, 1) + datetime.timedelta(days=n)
+            poem = shoji.haiku(d)
+            self.assertIn(poem, shoji.HAIKU[shoji.season(d)[0]])
+            seen.add(poem)
+        self.assertEqual(len(seen), sum(len(v) for v in shoji.HAIKU.values()))   # every poem comes round
+
     def test_season_boundaries(self):
         self.assertEqual(shoji.season(datetime.date(2026, 2, 3))[0], "winter")
         self.assertEqual(shoji.season(datetime.date(2026, 2, 4))[0], "spring")

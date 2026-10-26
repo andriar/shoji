@@ -61,6 +61,7 @@ AGENDA_ROWS = 4     # agenda lines under the grid; the card keeps one height (ge
 # 七十二候 lives in shoji (stdlib only), so `shoji greet` can use it from a shell without GTK
 _shoji = importlib.machinery.SourceFileLoader("shoji_ko", SHOJI).load_module()
 KO, micro_season = _shoji.KO, _shoji.micro_season
+haiku = getattr(_shoji, "haiku", lambda day=None: ("", ""))   # an older shoji: no poem, no crash
 
 
 # ---- interface language: prefs "lang" = "en" (default), "id" (Bahasa Indonesia) or "ja" (日本語)
@@ -262,6 +263,7 @@ button, .row, .app-row, .key-row, .sheet-row, .chip, .toggle, .day, .agenda-row,
 .day.other { color: alpha(@text, 0.32); }
 .day.past { color: alpha(@text, 0.6); }
 .season { font-family: "Kaisei Opti"; font-size: 12px; color: @muted; letter-spacing: 1px; }
+.haiku { font-family: "Kaisei Opti"; font-size: 12px; color: @muted; letter-spacing: 1px; }
 .day.today { background: @accent; color: @on_accent; font-weight: 700; }
 button.day { padding: 0; border: none; box-shadow: none; background-image: none; }
 .agenda button.day { min-height: 25px; }  /* room for the event dot */

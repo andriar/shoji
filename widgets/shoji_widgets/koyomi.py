@@ -446,7 +446,10 @@ class Calendar:
             self.rows.remove(child)
         items = self.agenda.day(d)
         if not items:
-            self.rows.pack_start(label(T("Nothing scheduled"), "muted"), False, False, 4)
+            poem, poet = haiku(d)   # a free day keeps its space for a poem (間)
+            free = label(f"{poem}　— {poet}", "haiku")
+            free.set_tooltip_text(T("Nothing scheduled"))
+            self.rows.pack_start(free, False, False, 6)
         shown = items if len(items) <= AGENDA_ROWS else items[:AGENDA_ROWS - 1]
         for it in shown:
             b = Gtk.Button()
@@ -589,11 +592,12 @@ class Calendar:
         """The 候 of today, then the weather when it is fresh (under two hours old)."""
         today = datetime.date.today()
         kanji, english = micro_season(today)
-        tip = f"{english} · {today.year} · w{today.isocalendar()[1]}"
+        poem, poet = haiku(today)
+        tip = f"{english} · {today.year} · w{today.isocalendar()[1]}\n{poem}　— {poet}"
         w = Weather.read(fresh_s=7200)
         if w:
             kanji += f" · {w['kanji']} {w['temp']}°"
-            tip = f"{english} · {w['text']} {w['temp']}°C in {w['place']} · {today.year} · w{today.isocalendar()[1]}"
+            tip = f"{english} · {w['text']} {w['temp']}°C in {w['place']} · {today.year} · w{today.isocalendar()[1]}\n{poem}　— {poet}"
         self.yw.set_text(kanji)
         self.yw.set_tooltip_text(tip)
         return False

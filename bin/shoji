@@ -188,6 +188,27 @@ def season(day=None):
     return current[1:]
 
 
+# 俳句: four well-known haiku per season (Edo and Meiji poets, public domain), the season's kigo
+# matching the old calendar above. One a day, in turn; Koyomi shows it when the day is free.
+HAIKU = {
+    "spring": [("古池や　蛙飛びこむ　水の音", "芭蕉"), ("菜の花や　月は東に　日は西に", "蕪村"),
+               ("春の海　終日のたり　のたりかな", "蕪村"), ("雀の子　そこのけそこのけ　お馬が通る", "一茶")],
+    "summer": [("閑さや　岩にしみ入る　蝉の声", "芭蕉"), ("夏草や　兵どもが　夢の跡", "芭蕉"),
+               ("五月雨を　あつめて早し　最上川", "芭蕉"), ("目には青葉　山ほととぎす　初鰹", "素堂")],
+    "autumn": [("柿くへば　鐘が鳴るなり　法隆寺", "子規"), ("名月や　池をめぐりて　夜もすがら", "芭蕉"),
+               ("この道や　行く人なしに　秋の暮", "芭蕉"), ("枯枝に　烏のとまりけり　秋の暮", "芭蕉")],
+    "winter": [("旅に病んで　夢は枯野を　かけ廻る", "芭蕉"), ("いくたびも　雪の深さを　尋ねけり", "子規"),
+               ("是がまあ　つひの栖か　雪五尺", "一茶"), ("斧入れて　香におどろくや　冬木立", "蕪村")],
+}
+
+
+def haiku(day=None):
+    """(poem, poet) for the day."""
+    d = day or datetime.date.today()
+    poems = HAIKU[season(d)[0]]
+    return poems[d.toordinal() % len(poems)]
+
+
 def prefs_get(key, default=None):
     try:
         return json.loads(PREFS.read_text()).get(key, default)
