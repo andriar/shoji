@@ -8,7 +8,7 @@ One palette drives everything you see: the bar, the panels, launcher, lock scree
 GTK and Qt apps, folder icons, the wallpaper, even VS Code and Spotify. Eight palettes, all of
 them checked to WCAG 4.5:1 (two of them to 7:1).
 
-![Shoji: terminal, Thunar and the bar in the Aizome palette, under tonight's moon](docs/screenshots/desktop.png)
+![Shoji in the Aizome palette: Fuji under tonight's moon, the bar, Koyomi and the notification panel side by side](docs/screenshots/desktop-koyomi.png)
 
 The look follows three old ideas. **Kanso** (簡素): show a thing only while it matters, so the
 cpu meter, the mic and the notification bell stay quiet until they have something to say.
@@ -16,6 +16,10 @@ cpu meter, the mic and the notification bell stay quiet until they have somethin
 means "you are here" or "this is on".
 
 ## A tour
+
+| Night: Aizome (藍染) | Day: Hiru (昼) |
+|---|---|
+| ![The Aizome wallpaper: Fuji with its autumn snow, mist at its foot, the moon in tonight's phase, three pines](docs/screenshots/desktop.png) | ![The Hiru wallpaper: the same Fuji on washi under a vermilion sun](docs/screenshots/desktop-light.png) |
 
 In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session (17 s).
 
@@ -37,7 +41,11 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
 
 | Zazen (focus) | Lock screen |
 |---|---|
-| ![Zazen: the bar is gone, other windows dim, an ensō counts down at the top](docs/screenshots/zazen.png) | ![Lock screen: a brush-stroke ensō around the clock, the date in kanji](docs/screenshots/lock.jpg) |
+| ![Zazen: the bar is gone, other windows dim, an ensō counts down at the top](docs/screenshots/zazen.png) | ![Lock screen: the wallpaper without its moon; the brush-stroke ensō and the clock stand where the moon was, the date in kanji and the password field below](docs/screenshots/lock-aizome.png) |
+
+| Lock screen by day | Koyomi on Hiru |
+|---|---|
+| ![Lock screen on Hiru: Fuji on washi, the ensō in the sun's place](docs/screenshots/lock-hiru.png) | ![Koyomi and the notification panel on the light Hiru palette](docs/screenshots/desktop-light-koyomi.png) |
 
 ## What you get
 
@@ -80,8 +88,12 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
   and off after, with a note of what waited. Ten minutes before an event a card offers **Join**
   when it carries a Meet / Zoom / Teams link.
 - **Seasonal accent** (optional): 紅梅 spring, 青竹 summer, 紅葉 autumn, 白群 winter.
-- **Wallpaper**: ink-wash mountains under the sun (light palettes) or tonight's real moon phase; the sky
-  turns pink at dawn, gold before sunset and violet after it (夕暮れ, from your city's sun times).
+- **Wallpaper**: Fuji in ink, laid out on the golden ratio: the summit where the 0.382 lines cross,
+  the sun (light palettes) or tonight's real moon phase in the golden spiral's eye, its snow as deep
+  as the season. The sky turns pink at dawn, gold before sunset and violet after it (夕暮れ, from
+  your city's sun times).
+- **Lock screen**: the same picture, sharp, without its moon: the brush-stroke ensō and the clock
+  stand where the moon was, the date in kanji and the password field below.
 
 **Everyday tools**
 - **Launcher** (Super+Space): frequent apps first; Enter focuses an app that is already open.
@@ -310,7 +322,7 @@ wallpaper sky and hills), then `shoji doctor <name>` to check contrast and `shoj
 
 Tested on Ubuntu 24.04 (Zorin OS 18) with Hyprland 0.56.2, waybar 0.14, swaync 0.9 and 0.11, and
 hyprlock 0.9.6, including a clean-home install inside a nested Hyprland (the screenshots come from
-one, with demo data) and two monitors there, one at scale 2 (Koyomi and the swaync panel re-centre on
+one, with demo data: `tests/live/run.sh --shots` takes them again) and two monitors there, one at scale 2 (Koyomi and the swaync panel re-centre on
 whichever monitor has focus; wide sheets fit the screen). The PKGBUILD builds, installs and
 uninstalls cleanly in an `archlinux` container (no Arch desktop session tried yet). Koyomi and the
 popovers speak English, Indonesian and Japanese (prefs `"lang"`). The login screen

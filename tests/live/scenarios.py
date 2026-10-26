@@ -30,12 +30,14 @@ def hypr_eval(lua):
     return sh("hyprctl", "eval", lua)
 
 
-def layers():
+def layers(output=None):
+    """Layer namespaces on every output, or on one (the test's screen is OUT)."""
     try:
         data = json.loads(sh("hyprctl", "layers", "-j") or "{}")
     except ValueError:
         return []
-    return [l["namespace"] for mon in data.values() for lv in mon["levels"].values() for l in lv]
+    return [l["namespace"] for name, mon in data.items() if output in (None, name)
+            for lv in mon["levels"].values() for l in lv]
 
 
 def wait(pred, timeout, step=0.5):
@@ -113,6 +115,41 @@ for i in range(desk.get_child_count()):
         print(b.get_action_iface().do_action(0)); break
 '''
     return wait(lambda: sh(sys.executable, "-c", code, name) == "True", timeout, step=2)
+
+
+def screen_alone():
+    """`shoji apply` reloads Hyprland, which brings the hidden window's output back: switch it off
+    again, so sizes and positions come from the test screen alone."""
+    def alone():
+        try:
+            m = {x["name"]: x for x in json.loads(sh("hyprctl", "monitors", "-j"))}
+        except ValueError:
+            return False
+        return set(m) == {OUT} and m[OUT]["width"] == 1600
+    for _ in range(20):
+        hypr_eval(f'hl.monitor({{ output = "{OUT}", mode = "1600x900@60", position = "4000x0", scale = 1 }})')
+        hypr_eval('hl.monitor({ output = "WAYLAND-1", disabled = true })')
+        if alone():
+            break
+        time.sleep(0.5)
+    hypr_eval('hl.dispatch(hl.dsp.cursor.move({ x = 4800, y = 450 }))')
+    sh("hyprctl", "dismissnotify")   # the debug-session notice
+    return alone()
+
+
+def unlock():
+    """SIGUSR1 unlocks hyprlock, but one still loading its pictures misses it: ask again each second."""
+    for _ in range(12):
+        pids = sh("pidof", "hyprlock").split()
+        if not pids:
+            return True
+        for pid in pids:
+            try:
+                os.kill(int(pid), 10)
+            except OSError:
+                pass
+        time.sleep(1)
+    return not sh("pidof", "hyprlock")
 
 
 # ------------------------------------------------------------------ scenarios
@@ -195,9 +232,7 @@ def idle_ink_and_lock():
     check("the lock keeps the ink's picture", (HOME / ".cache/shoji/lock-ink.png").exists())
     time.sleep(2)
     shot("lock")
-    for pid in locked.split():
-        os.kill(int(pid), 10)   # SIGUSR1: hyprlock unlocks
-    check("unlocked", wait(lambda: not sh("pidof", "hyprlock"), 10))
+    check("unlocked", unlock())
     sh("pkill", "-x", "hypridle")
     check("the pointer setting is back", wait(lambda: option("cursor:inactive_timeout") == before, 5),
           f"{option('cursor:inactive_timeout')} vs {before}")
@@ -262,11 +297,70 @@ def eye_rest():
     prefs(eye_rest=False)
 
 
+def readme_shots():
+    """The README's screenshots, on the demo data: the desktop in a dark and a light palette, Koyomi
+    open, and the lock screen (hyprlock itself). Saved to docs/screenshots."""
+    print("README screenshots")
+    docs = Path(os.environ["SHOJI_LIVE_REPO"]) / "docs/screenshots"
+    awww = os.environ["SHOJI_LIVE_AWWW"]
+    hypr_eval(f'hl.exec_cmd("{awww}-daemon")')
+    wait(lambda: "awww-daemon" in layers(), 15)
+    hypr_eval('hl.exec_cmd("waybar")')
+    check("the bar is up", wait(lambda: "waybar" in layers(), 20))
+    for name, palette in (("desktop", "aizome"), ("desktop-light", "hiru")):
+        (HOME / ".cache/shoji/lock.png").unlink(missing_ok=True)   # a fresh lock picture at this size
+        screen_alone()
+        sh(sys.executable, str(BIN / "shoji"), "apply", palette, timeout=60)
+        check(f"the test screen alone after apply ({palette})", screen_alone())
+        sh(sys.executable, str(BIN / "shoji"), "apply", palette, timeout=60)   # again, sized on this screen
+        screen_alone()
+        sh(sys.executable, str(HOME / ".config/shoji/gen_swaync.py"))   # the panel's margin for this width
+        sh("swaync-client", "-R")
+        wall = HOME / f"Pictures/Wallpapers/shoji-{palette}.png"
+        sh(awww, "img", str(wall), "--transition-type", "none")
+        sh("pkill", "-SIGUSR2", "-x", "waybar")
+        restart_widgets()
+        sh("swaync-client", "-C")   # the palette's own notice off the desktop
+        time.sleep(3)
+        shot(name)
+        if palette == "aizome":
+            sh(sys.executable, str(BIN / "shoji-zazen"), "start")
+            check("zazen's ensō", wait(lambda: "hypr-zazen" in layers(OUT), 10))
+            time.sleep(2)
+            shot("zazen")
+            sh(sys.executable, str(BIN / "shoji-zazen"), "stop")
+            wait(lambda: "hypr-zazen" not in layers(OUT), 10)
+            sh("swaync-client", "-C")
+        for app, title, body in (("Mail", "Mei Tanaka", "Photos from the walk to the shrine"),
+                                 ("Builds", "Build finished", "web-app #142 passed in 3 min")):
+            sh("notify-send", "-a", app, title, body)   # demo notifications for the panel
+        time.sleep(1)
+        sh("swaync-client", "-op")
+        check(f"the panel opens ({palette})", wait(lambda: "swaync-control-center" in layers(OUT), 10), ",".join(layers(OUT)))
+        check(f"Koyomi beside it ({palette})", wait(lambda: "hypr-calendar" in layers(OUT), 10), ",".join(layers(OUT)))
+        time.sleep(1.5)
+        shot(f"{name}-koyomi")
+        sh("swaync-client", "-cp")
+        time.sleep(1)
+        hypr_eval('hl.exec_cmd("hyprlock")')
+        locked = wait(lambda: sh("pidof", "hyprlock"), 15)
+        check(f"the lock screen shows ({palette})", locked)
+        time.sleep(2.5)
+        shot(f"lock-{palette}")
+        check(f"unlocked ({palette})", unlock(), sh("pidof", "hyprlock"))
+    for f in SHOTS.glob("*.png"):
+        (docs / f.name).write_bytes(f.read_bytes())
+    print(f"       copied {len(list(SHOTS.glob('*.png')))} screenshots to {docs}")
+
+
 def main():
     end_at = datetime.datetime.fromisoformat(os.environ["SHOJI_LIVE_MEETING_END"])
     SHOTS.mkdir(parents=True, exist_ok=True)
-    for step in (boot, labels_on_screen, meeting_starts, alt_tab, idle_ink_and_lock,
-                 lambda: meeting_ends(end_at), batches, end_of_day, eye_rest):
+    steps = (boot, labels_on_screen, meeting_starts, alt_tab, idle_ink_and_lock,
+             lambda: meeting_ends(end_at), batches, end_of_day, eye_rest)
+    if os.environ.get("SHOJI_LIVE_SHOTS") == "1":
+        steps = (boot, readme_shots)
+    for step in steps:
         try:
             step()
         except Exception as e:  # one broken scenario must not hide the others

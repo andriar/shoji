@@ -5,6 +5,7 @@
 # bug it was built from looked right offscreen.
 #
 #   tests/live/run.sh            about four minutes; prints PASS/FAIL per check, exits 1 on a FAIL
+#   tests/live/run.sh --shots    the README screenshots instead (docs/screenshots), from demo data
 #
 # What keeps it away from your session:
 #   - its own HOME, runtime dir and session bus (nothing of yours is read or written but the fonts,
@@ -17,6 +18,9 @@
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
+SHOTS=0
+[ "${1:-}" = "--shots" ] && SHOTS=1
+AWWW=$(command -v awww || echo "$HOME/.cargo/bin/awww")   # found before the stand-ins hide it
 [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || { echo "Run this from a Hyprland session: the test session hides inside it."; exit 2; }
 for c in Hyprland hyprctl grim dbus-run-session swaync swaync-client hypridle hyprlock notify-send python3; do
   command -v "$c" >/dev/null || { echo "Missing: $c"; exit 2; }
@@ -72,8 +76,8 @@ z = lambda d: d.astimezone(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 ev = lambda uid, s, e, what, extra="": (f"BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:{z(now)}\r\nDTSTART:{z(s)}\r\n"
                                         f"DTEND:{z(e)}\r\nSUMMARY:{what}\r\n{extra}END:VEVENT\r\n")
 open(sys.argv[1], "w").write("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//shoji live//EN\r\n"
-    + ev("live-now", now - dt.timedelta(minutes=2), end, "Live test: design review")
-    + ev("live-soon", now + dt.timedelta(minutes=6), now + dt.timedelta(minutes=30), "Live test: weekly sync",
+    + ev("live-now", now - dt.timedelta(minutes=2), end, "Design review")
+    + ev("live-soon", now + dt.timedelta(minutes=6), now + dt.timedelta(minutes=30), "Weekly sync",
          "DESCRIPTION:https://meet.google.com/aaa-bbbb-ccc\r\n")
     + "END:VCALENDAR\r\n")
 print(end.isoformat())
@@ -82,17 +86,17 @@ PY
 
 cat > "$WORK/hyprland.lua" <<LUA
 hl.on("hyprland.start", function()
-    hl.exec_cmd("swaync")
-    hl.exec_cmd("~/.local/bin/hypr-widgets")
     hl.exec_cmd("sh -c 'echo \$DBUS_SESSION_BUS_ADDRESS > $WORK/bus'")
 end)
-hl.config({ animations = { enabled = false } })
+hl.monitor({ output = "SHOJI", mode = "1600x900@60", position = "4000x0", scale = 1 })   -- the test screen
+hl.config({ animations = { enabled = false }, cursor = { invisible = true } })
 LUA
 
 ENVS=(HOME="$H" USER="$USER" LANG=en_US.UTF-8 LC_TIME=C.UTF-8 PATH="$WORK/stubs:$PATH"
       XDG_RUNTIME_DIR="$RUNDIR" XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
       SHOJI_LIVE_HOME="$H" SHOJI_LIVE_WORK="$WORK" SHOJI_LIVE_MEETING_END="$MEETING_END"
-      SHOJI_EYE_EVERY_S=20 HYPRLAND_NO_CRASHREPORTER=1)
+      SHOJI_EYE_EVERY_S=20 HYPRLAND_NO_CRASHREPORTER=1 SHOJI_LIVE_SHOTS="$SHOTS" SHOJI_LIVE_AWWW="$AWWW"
+      SHOJI_LIVE_REPO="$REPO")
 
 echo "Palette and generated configs"
 env -i "${ENVS[@]}" python3 "$H/.local/bin/shoji" apply aizome >/dev/null 2>&1 || true
@@ -115,8 +119,25 @@ INNER=(HYPRLAND_INSTANCE_SIGNATURE="$SIG" WAYLAND_DISPLAY="$WL" DBUS_SESSION_BUS
 
 # a headless output to work on, and the hidden window's own output off
 env -i "${ENVS[@]}" "${INNER[@]}" hyprctl output create headless SHOJI >/dev/null
-env -i "${ENVS[@]}" "${INNER[@]}" hyprctl eval 'hl.monitor({ output = "SHOJI", mode = "1600x900@60", position = "4000x0", scale = 1 })' >/dev/null
-env -i "${ENVS[@]}" "${INNER[@]}" hyprctl eval 'hl.monitor({ output = "WAYLAND-1", disabled = true })' >/dev/null
+screen_ready() {   # SHOJI at its size and alone: the hidden window's output off
+  env -i "${ENVS[@]}" "${INNER[@]}" hyprctl monitors -j | python3 -c '
+import json, sys
+m = {x["name"]: x for x in json.load(sys.stdin)}
+sys.exit(0 if set(m) == {"SHOJI"} and m["SHOJI"]["width"] == 1600 and m["SHOJI"]["scale"] == 1 else 1)'
+}
+for _ in $(seq 20); do
+  env -i "${ENVS[@]}" "${INNER[@]}" hyprctl eval 'hl.monitor({ output = "SHOJI", mode = "1600x900@60", position = "4000x0", scale = 1 })' >/dev/null
+  env -i "${ENVS[@]}" "${INNER[@]}" hyprctl eval 'hl.monitor({ output = "WAYLAND-1", disabled = true })' >/dev/null
+  screen_ready && break
+  sleep 0.5
+done
+screen_ready || { echo "The test screen did not come up as 1600x900 alone:"; env -i "${ENVS[@]}" "${INNER[@]}" hyprctl monitors; exit 1; }
+# the pointer to the test screen (new layers open on the monitor under it), then the panel and
+# Shoji's surfaces: started earlier, they would stay on the hidden output
+env -i "${ENVS[@]}" "${INNER[@]}" hyprctl eval 'hl.dispatch(hl.dsp.cursor.move({ x = 4800, y = 450 }))' >/dev/null
+env -i "${ENVS[@]}" "${INNER[@]}" hyprctl eval 'hl.dispatch(hl.dsp.focus({ monitor = "SHOJI" }))' >/dev/null
+env -i "${ENVS[@]}" "${INNER[@]}" hyprctl eval 'hl.exec_cmd("swaync")' >/dev/null
+env -i "${ENVS[@]}" "${INNER[@]}" hyprctl eval 'hl.exec_cmd("~/.local/bin/hypr-widgets")' >/dev/null
 
 echo "Running the scenarios"
 env -i "${ENVS[@]}" "${INNER[@]}" python3 "$REPO/tests/live/scenarios.py"

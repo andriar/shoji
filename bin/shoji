@@ -350,7 +350,7 @@ def generate(name):
     write(CFG / "hypr/theme.conf", f"# {header}\n"
           + "".join(f"${k} = rgb({v})\n" for k, v in bare.items())
           + f"$edge = rgba({bare['text']}24)\n$glass = rgba({bare['base']}9e)\n"
-          + f"$font_ui = Zen Kaku Gothic New\n$font_display = Kaisei Opti\n")
+          + f"$font_ui = Zen Kaku Gothic New\n$font_display = Kaisei Opti\n" + lock_layout())
 
     # GTK3 CSS consumers: waybar, wlogout, swaync, hypr-widgets
     css = f"/* {header} */\n" + "".join(f"@define-color {k} {v};\n" for k, v in t.items())
@@ -464,9 +464,13 @@ def generate(name):
     render_enso_levels(t)
     render_lock_enso(t)
     wall = render_wallpaper(name)
-    if not (CACHE / "lock.png").exists():
+    try:   # the lock picture follows Shoji's own wallpaper; another one, set by hand, stays as it is
+        shown = Path((STATE.parent / "shoji-wallpaper").read_text().strip())
+    except OSError:
+        shown = None
+    if not (CACHE / "lock.png").exists() or shown is None or shown.parent == WALLS:
         import shutil as _sh
-        _sh.copyfile(wall, CACHE / "lock.png")
+        _sh.copyfile(lock_wallpaper(name), CACHE / "lock.png")
     write(STATE, name + "\n")
     return wall
 
@@ -983,7 +987,7 @@ def render_lock_enso(t):
 def monitor_size():
     try:
         mons = json.loads(subprocess.run(["hyprctl", "monitors", "-j"], capture_output=True, text=True).stdout)
-        m = max(mons, key=lambda m: m["width"] * m["height"])
+        m = max((m for m in mons if not m.get("disabled")), key=lambda m: m["width"] * m["height"])
         return m["width"], m["height"]
     except Exception:
         return 2560, 1440
@@ -1099,7 +1103,22 @@ def fuji_snow_and_shade(c, pts, sx, sy, dark, p, sky, ink, rnd):
     c.restore()
 
 
-def render_wallpaper(name):
+def lock_layout():
+    """hyprlock positions (from the centre, y up): the ensō and its clock take the moon's place
+    in the golden spiral's eye, the date and the password field below it in one column."""
+    w, h = monitor_size()
+    x, y = round(w * (0.724 - 0.5)), round(h * (0.5 - 0.276))
+    return (f"$lock_enso = {x}, {y}\n$lock_time = {x}, {y + 20}\n$lock_date = {x}, {y - 42}\n"
+            f"$lock_seal = {x + 98}, {y - 100}\n$lock_seal_text = {x + 98}, {y - 99}\n$lock_input = {x}, {y - 230}\n")
+
+
+def lock_wallpaper(name):
+    """The lock screen's picture: the same wallpaper without the sun or moon (the ensō takes its
+    place)."""
+    return CACHE / f"lock-wall-{name}.png"
+
+
+def render_wallpaper(name, body=True):
     """Sumi-e mountains in the palette: Fuji on the left (its snow as deep as the season), the sun (light palettes) or
     tonight's moon (dark ones) on the right, empty sky between (間). Each ridge is darker at its
     crest where the ink pools and thins at its foot (into mist by day, into the night sky after
@@ -1127,7 +1146,7 @@ def render_wallpaper(name):
     # the sun on light palettes, its edge bled into the paper; on dark ones tonight's moon with
     # faint maria, in its real phase
     cx, cy, r = w * 0.724, h * 0.276, w * 0.0656   # the golden spiral's eye
-    if dark:
+    if body and dark:
         draw_moon(c, cx, cy, r, moon_phase(), cairo_rgb(p["accent"], 0.92), cairo_rgb(p["accent"], 0.10))
         c.save()
         c.arc(cx, cy, r, 0, 2 * math.pi)
@@ -1139,7 +1158,7 @@ def render_wallpaper(name):
             c.set_source(gm)
             c.paint()
         c.restore()
-    else:
+    elif body:
         halo = cairo.RadialGradient(cx, cy, r * 0.95, cx, cy, r * 1.45)
         halo.add_color_stop_rgba(0, *cairo_rgb(p["accent"], 0.11))
         halo.add_color_stop_rgba(1, *cairo_rgb(p["accent"], 0))
@@ -1249,9 +1268,14 @@ def render_wallpaper(name):
     v.add_color_stop_rgba(1, *cairo_rgb(ink, 0.28 if dark else 0.12))
     c.set_source(v)
     c.paint()
+    if not body:
+        CACHE.mkdir(parents=True, exist_ok=True)
+        s.write_to_png(str(lock_wallpaper(name)))
+        return lock_wallpaper(name)
     WALLS.mkdir(parents=True, exist_ok=True)
     out = WALLS / f"shoji-{name}.png"
     s.write_to_png(str(out))
+    render_wallpaper(name, body=False)
     return out
 
 
@@ -1299,7 +1323,8 @@ def set_wallpaper(path=None, transition=None):
     write(last, str(path) + "\n")
     import shutil as _sh
     CACHE.mkdir(parents=True, exist_ok=True)
-    _sh.copyfile(path, CACHE / "lock.png")  # hyprlock background
+    own = lock_wallpaper(path.stem.removeprefix("shoji-")) if path.parent == WALLS else None
+    _sh.copyfile(own if own and own.exists() else path, CACHE / "lock.png")  # hyprlock background
     hypr_wall = HOME / ".local/bin/hypr-wall"
     awww = shutil.which("awww") or (HOME / ".cargo/bin/awww").exists() and str(HOME / ".cargo/bin/awww")
     if awww and transition == "fade" and not subprocess.run(["pgrep", "-x", "awww-daemon"], stdout=subprocess.DEVNULL).returncode:
