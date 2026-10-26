@@ -11,6 +11,7 @@ license=('MIT')
 depends=('hyprland' 'waybar' 'swaync' 'fuzzel' 'hyprlock' 'wireplumber' 'libpulse' 'networkmanager'
          'python-gobject' 'python-cairo' 'gtk3' 'gtk-layer-shell' 'papirus-icon-theme' 'curl' 'fontconfig')
 optdepends=('playerctl: now playing on the bar'
+            'hypridle: the ink screen when idle, then the lock'
             'evolution-data-server: Koyomi agenda, reminders, Silent in meetings'
             'gnome-calendar: open a day from Koyomi'
             'bluez-utils: Bluetooth popover and battery'

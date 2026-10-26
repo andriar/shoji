@@ -26,7 +26,7 @@ fi
 command -v starship >/dev/null || echo "  (optional) starship not found: the terminal prompt stays as it is"
 command -v ghostty  >/dev/null || echo "  (optional) ghostty not found: terminal colors are skipped"
 python3 -c 'import gi; gi.require_version("ECal", "2.0")' 2>/dev/null \
-  || echo "  (optional) gir1.2-ecal-2.0 not found: Koyomi shows no events or tasks"
+  || echo "  (optional) evolution-data-server's GObject bindings not found (gir1.2-ecal-2.0 on Debian/Ubuntu): Koyomi shows no events or tasks"
 
 say "2/6 Backing up current files to $BACKUP"
 mkdir -p "$(dirname "$BACKUP")"
@@ -36,8 +36,8 @@ for f in .config/waybar .config/swaync .config/fuzzel .config/wlogout/style.css 
          .config/btop/btop.conf .config/qt6ct/qt6ct.conf; do
   [ -e "$HOME/$f" ] && targets+=("$f")
 done
-for f in shoji hypr-widgets hypr-osd hypr-pop hypr-shot hypr-motion hypr-clip hypr-switch shoji-btbat shoji-level shoji-clock shoji-ws shoji-media shoji-zazen hypr-term audio-switch fuzzel-at-cursor \
-         hypr-toggle-app hypr-sysload keep-awake hypr-nightlight hypr-record hypr-wall; do
+for f in "$REPO"/bin/*; do
+  f=$(basename "$f")
   [ -e "$BIN/$f" ] && targets+=(".local/bin/$f")
 done
 tar czf "$BACKUP" -C "$HOME" "${targets[@]}" 2>/dev/null || tar czf "$BACKUP" --files-from /dev/null

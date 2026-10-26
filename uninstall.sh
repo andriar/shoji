@@ -4,9 +4,13 @@ set -euo pipefail
 last="$HOME/.local/share/shoji/last-backup"
 [ -s "$last" ] || { echo "No Shoji backup found."; exit 1; }
 backup=$(cat "$last")
+"$HOME/.local/bin/shoji-ink" stop 2>/dev/null || true
 echo "Restoring $backup"
 tar xzf "$backup" -C "$HOME"
-for f in shoji hypr-widgets hypr-pop hypr-shot hypr-motion shoji-level shoji-clock shoji-ws shoji-media shoji-zazen hypr-term; do
+# every script Shoji installs, unless the backup had one of that name (then it was restored above)
+for f in "$(cd "$(dirname "$0")" && pwd)"/bin/*; do
+  f=$(basename "$f")
+  [ "$f" = __pycache__ ] && continue
   tar tzf "$backup" | grep -qx ".local/bin/$f" || rm -f "$HOME/.local/bin/$f"
 done
 rm -f "$HOME"/.local/share/shoji/widgets/shoji_widgets/*.py
