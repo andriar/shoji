@@ -3,7 +3,7 @@
 
   osd       ensō ring, top right: volume / mic level, shown even when Do Not Disturb is on.
             hypr-osd writes "icon<TAB>title<TAB>percent<TAB>muted" lines to $FIFO.
-  calendar  Koyomi: kanji week, today as a seal; sits on top of the swaync control center
+  calendar  Koyomi: kanji week, today as a seal; sits left of the swaync control center
             while it is open (follows swaync's SubscribeV2 cc_open signal). Click a day for its
             events and due tasks from Evolution Data Server (what GNOME Calendar shows).
   popovers  Sound (devices + volume), Network, Battery, the Theme manager, the launcher and the
@@ -56,7 +56,7 @@ GAP = 8
 OSD_MS = 1400
 OSD_TWEEN_MS = 240
 WEEK_K = "日月火水木金土"  # Sunday first, like the calendar grid
-AGENDA_ROWS = 3     # agenda lines under the grid; the card keeps one height (gen_swaync CAL_HEIGHT)
+AGENDA_ROWS = 6     # agenda lines under the grid; the card keeps one height (gen_swaync CAL_HEIGHT)
 
 # 七十二候: the 72 micro-seasons (start dates as in the modern Japanese calendar; ±1 day by year)
 KO = [
@@ -540,12 +540,14 @@ class Agenda:
 
 # ---------------------------------------------------------------- Koyomi calendar
 class Calendar:
-    """Top card of the Koyomi column; the swaync panel sits right under it (same width)."""
+    """Left card of the Koyomi pair: it sits just left of the screen's centre line, the swaync panel
+    just right of it (gen_swaync), both under the clock and the same height."""
     WIDTH = CC_WIDTH
 
     def __init__(self):
         self.win = layer_window("hypr-calendar", Layer.Layer.OVERLAY)
         Layer.set_anchor(self.win, Layer.Edge.TOP, True)
+        Layer.set_anchor(self.win, Layer.Edge.LEFT, True)
         Layer.set_margin(self.win, Layer.Edge.TOP, GAP)
         self.win.set_size_request(self.WIDTH, -1)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -718,6 +720,11 @@ class Calendar:
         self.yw.set_tooltip_text(f"{english} · {today.year} · w{today.isocalendar()[1]}")
         self.selected = today
         self.load()
+        mon = Gdk.Display.get_default().get_monitor(0)
+        if mon:
+            Layer.set_monitor(self.win, mon)
+            half = mon.get_geometry().width // 2
+            Layer.set_margin(self.win, Layer.Edge.LEFT, max(0, half - GAP // 2 - self.WIDTH))
         self.win.show()
 
     def hide(self):

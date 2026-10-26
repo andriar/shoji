@@ -17,7 +17,7 @@ folder icons and the wallpaper.
 - **One quiet bar** — workspaces as 一 二 三 四 (the current one is a seal; switch to 1 2 3 4 if you
   prefer; click or scroll to switch), the time with the weekday in kanji, Lucide icons, app tray
   icons tucked behind ⋯.
-- **Koyomi** — click the clock for a kanji calendar on top of quick settings and notifications.
+- **Koyomi** — click the clock for a kanji calendar beside quick settings and notifications.
   Click a day to see its events and due tasks (the calendars GNOME Calendar shows, Google included).
 - **Popovers with one shape** — Sound (devices and volume), Network, Battery (laptops), Theme.
 - **Launcher** (Super+Space) — frequent apps first; searches names, descriptions and keywords.
