@@ -12,6 +12,7 @@ Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome
   vscode        install the Shoji VS Code theme (once; every apply updates it)
   spotify       make Shoji the spicetify theme (then run `spicetify apply` when Spotify can restart)
   chrome        where the Chrome theme is and how to load it
+  slack         the four colours for Slack's custom theme (copied), and where they go
   moon          redraw the wallpaper with tonight's moon phase (dark palettes)
   senja         redraw it when the sky's dawn / sunset tint changes (夕暮れ; hypr-widgets runs it)
   greet         one line for a new terminal: today's 候 and what is next (prefs "greet": true)
@@ -1403,6 +1404,28 @@ user = "greeter"
    and regreet, and replaces your current display manager (with the way back written there).""")
 
 
+def cmd_slack():
+    """Slack's custom theme takes four colours: navigation, selected item, presence, notifications.
+    Uses the live palette (with the seasonal accent) when there is one."""
+    import shutil
+    try:
+        live = json.loads((CFG / "shoji/current.json").read_text())
+        t, dark = live["tokens"], live["dark"]
+    except (OSError, ValueError, KeyError):
+        t, dark = tokens(current()), PALETTES[current()]["dark"]
+    theme = ", ".join(t[k].upper() for k in ("base", "accent", "ok", "alert"))
+    copied = False
+    if shutil.which("wl-copy"):
+        # wl-copy stays behind to serve the clipboard: no pipes, or this would wait on it
+        copied = subprocess.run(["wl-copy", theme], stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL).returncode == 0
+    print(f"""{theme}{"   (copied)" if copied else ""}
+
+Slack → your photo → Preferences → Theme: Color mode {"Dark" if dark else "Light"},
+then Custom theme → Theme Colors → Import, paste, Apply.
+Slack keeps it until you import another: run this again after a palette change.""")
+
+
 def main():
     args = sys.argv[1:] or ["status"]
     cmd = args[0]
@@ -1428,6 +1451,8 @@ def main():
         run("spicetify", "config", "current_theme", "Shoji", "color_scheme", current())
         print("Shoji is the spicetify theme now: run `spicetify apply` (it restarts Spotify).\n"
               "Every `shoji apply` then sets the matching colour scheme for the next spicetify apply.")
+    elif cmd == "slack":
+        cmd_slack()
     elif cmd == "chrome":
         write_chrome(current(), tokens(current()))
         print(f"Chrome: chrome://extensions → Developer mode → Load unpacked → {APPS / 'chrome'}\n"

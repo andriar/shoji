@@ -369,5 +369,20 @@ class Batch(unittest.TestCase):
         self.assertEqual(b.waiting(), {})
 
 
+class Slack(unittest.TestCase):
+    def test_four_colours_in_slacks_order(self):
+        import contextlib
+        import io
+        import shutil
+        from unittest import mock
+        out = io.StringIO()
+        with mock.patch.object(shutil, "which", return_value=None), contextlib.redirect_stdout(out), \
+                mock.patch.object(shoji, "CFG", Path(tempfile.mkdtemp())):   # no live palette: the saved one
+            shoji.cmd_slack()
+        first = out.getvalue().splitlines()[0]
+        t = shoji.tokens(shoji.current())
+        self.assertEqual(first, ", ".join(t[k].upper() for k in ("base", "accent", "ok", "alert")))
+
+
 if __name__ == "__main__":
     unittest.main()
