@@ -3,7 +3,8 @@
 
   shoji-media watch      custom/media (streaming JSON): one line whenever the track or its state
                          changes. The bars are drawn and animated by the bar's own CSS (class
-                         "playing" runs the animation), so nothing here runs per frame.
+                         "playing" runs the animation), so nothing here runs per frame; class
+                         "hue-N" (24 hues, or "hue-grey") tints them with the cover's colour.
   shoji-media info       JSON of the current track for the Media popover (fetches https covers)
   shoji-media toggle|next|previous|position [SECONDS]
 
@@ -75,6 +76,42 @@ def fetch_cover(url):
         pass
 
 
+def cover_path(url):
+    if url.startswith("file://"):
+        return Path(urllib.request.url2pathname(url[7:]))
+    fetch_cover(url)
+    return COVERS / hashlib.sha1(url.encode()).hexdigest()
+
+
+def hue_class(url, cache={}):
+    """The cover's most vivid colour as one of 24 hue classes; "hue-grey" for grey covers.
+    Same weighting as the Media popover's colour wash."""
+    if url in cache:
+        return cache[url]
+    result = None
+    try:
+        import colorsys
+        import gi
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import GdkPixbuf
+        pix = GdkPixbuf.Pixbuf.new_from_file(str(cover_path(url))).scale_simple(
+            24, 24, GdkPixbuf.InterpType.BILINEAR)
+        data, n, stride = pix.get_pixels(), pix.get_n_channels(), pix.get_rowstride()
+        acc, total = [0.0, 0.0, 0.0], 0.0
+        for y in range(24):
+            for x in range(24):
+                r, g, b = (data[y * stride + x * n + i] / 255 for i in range(3))
+                w = (max(r, g, b) - min(r, g, b)) * max(r, g, b) + 0.02
+                acc = [acc[0] + r * w, acc[1] + g * w, acc[2] + b * w]
+                total += w
+        h, sat, _ = colorsys.rgb_to_hsv(*(c / total for c in acc))
+        result = "hue-grey" if sat < 0.12 else f"hue-{round(h * 24) % 24}"
+    except Exception:  # no cover, or one that does not load: the bars keep the accent
+        pass
+    cache[url] = result
+    return result
+
+
 def esc(s):
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -88,8 +125,10 @@ def watch():
             line = {"text": "", "class": "none"}
         else:
             tip = esc(t["title"]) + (f"\n{esc(t['artist'])}" if t["artist"] else "")
+            playing = t["status"] == "Playing"
+            hue = hue_class(t["mpris:artUrl"]) if playing and t["mpris:artUrl"] else None
             line = {"text": esc(t["title"] or "Unknown"), "tooltip": tip,
-                    "class": "playing" if t["status"] == "Playing" else "paused"}
+                    "class": ["playing", hue] if hue else "playing" if playing else "paused"}
         if line != last:
             last = line
             try:

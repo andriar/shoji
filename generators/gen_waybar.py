@@ -218,6 +218,16 @@ def eq_css():
     rest = ", ".join("3px 3px" for _ in xs)
     rest_pos = ", ".join(f"{x}px {base - 3}px" for x in xs)
     keys = "\n".join(f"  {round(100 * k / steps)}% {{ {frame(k)} }}" for k in range(steps + 1))
+    # the cover's colour (shoji-media sends hue-0..23 / hue-grey), pulled toward the text colour
+    # so it reads on light and dark palettes alike
+    import colorsys
+    def tint(color):
+        return ", ".join([f"linear-gradient({color}, {color})"] * 4)
+    hues = "".join(
+        f"#custom-media.playing.hue-{i} {{ background-image: "
+        + tint("mix(@text, #%02x%02x%02x, 0.75)" % tuple(round(c * 255) for c in colorsys.hsv_to_rgb(i / 24, 0.8, 0.95)))
+        + "; }\n" for i in range(24))
+    hues += f"#custom-media.playing.hue-grey {{ background-image: {tint('@text')}; }}\n"
     return f"""
 @keyframes eq {{
 {keys}
@@ -230,6 +240,7 @@ def eq_css():
   background-position: {rest_pos};
 }}
 #custom-media.playing {{ animation: eq 3.2s ease-in-out infinite alternate; }}
+{hues}
 #custom-media.paused {{ background-image: {", ".join(["linear-gradient(@muted, @muted)"] * 4)}; }}
 """
 
