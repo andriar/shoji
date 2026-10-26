@@ -25,7 +25,7 @@ cfg = {
     "margin-top": 6, "margin-left": 10, "margin-right": 10, "spacing": 0,
     "modules-left": ["custom/launcher", "custom/ws-watch", *WS, "hyprland/window"],
     "modules-center": ["custom/clock", "custom/notification"],
-    "modules-right": ["custom/record", "custom/system", "custom/keepawake", "custom/nightlight",
+    "modules-right": ["image#art", "custom/media", "custom/record", "custom/system", "custom/keepawake", "custom/nightlight",
                       "network", "pulseaudio#mic", "image#vol", "pulseaudio", "image#bat", "battery", "group/tray"],
 
     "custom/launcher": {"format": L("search"), "tooltip-format": "Search apps (Super+Space)",
@@ -74,6 +74,13 @@ cfg = {
         "on-scroll-up": "wpctl set-volume -l 1 @DEFAULT_AUDIO_SOURCE@ 5%+",
         "on-scroll-down": "wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 5%-",
     },
+    # now playing: cover + bars that loop while music plays (shoji-media); click = Media popover
+    "image#art": {"exec": f"{BIN}/shoji-media art", "interval": 30, "signal": 13, "size": 20,
+                  "on-click": f"{BIN}/hypr-pop media", "on-click-right": f"{BIN}/shoji-media toggle",
+                  "tooltip": False},
+    "custom/media": {"exec": f"{BIN}/shoji-media watch", "return-type": "json", "escape": False,
+                     "on-click": f"{BIN}/hypr-pop media", "on-click-right": f"{BIN}/shoji-media toggle",
+                     "on-scroll-up": f"{BIN}/shoji-media next", "on-scroll-down": f"{BIN}/shoji-media previous"},
     # volume = ensō ring image + number; both open the Sound popover, scroll = the knob
     "image#vol": {"exec": f"{BIN}/shoji-level vol", "interval": 2, "signal": 10, "size": 16,
                   "on-click": f"{BIN}/hypr-pop audio", "on-click-middle": f"{BIN}/hypr-osd mute",
@@ -171,6 +178,10 @@ window#waybar.empty #window { background: transparent; }
   font-size: 12px; color: @muted;
 }
 
+#image.art { padding: 0 2px 0 8px; }
+#custom-media { font-family: "JetBrainsMono Nerd Font"; font-size: 10px; letter-spacing: 3px; padding: 0 8px 0 4px; }
+#custom-media.playing { color: @accent; }
+#custom-media.paused { color: @muted; }
 #custom-system { font-family: "JetBrainsMono Nerd Font"; font-size: 11px; color: @muted; }
 #custom-system.warning { color: @warn; }
 #custom-system.critical { color: @alert; }

@@ -6,8 +6,9 @@
   calendar  Koyomi: kanji week, today as a seal; sits left of the swaync control center
             while it is open (follows swaync's SubscribeV2 cc_open signal). Click a day for its
             events and due tasks from Evolution Data Server (what GNOME Calendar shows).
-  popovers  Sound (devices + volume), Network, Battery, the Theme manager, the launcher and the
-            shortcuts sheet. hypr-pop writes "pop<TAB>audio|network|battery|theme|launcher|keys" to $FIFO;
+  popovers  Sound (devices + volume), Network, Battery, Media (now playing), the Theme manager, the
+            launcher and the shortcuts sheet. hypr-pop writes
+            "pop<TAB>audio|network|battery|media|theme|launcher|keys" to $FIFO;
             the same line again closes it.
 
 Colors: ~/.config/waybar/colors.css for GTK CSS and ~/.config/shoji/current.json for cairo,
@@ -32,7 +33,8 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 gi.require_version("GtkLayerShell", "0.1")
 gi.require_version("PangoCairo", "1.0")
-from gi.repository import Gdk, GLib, Gio, Gtk, GtkLayerShell as Layer, Pango, PangoCairo  # noqa: E402
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Gdk, GdkPixbuf, GLib, Gio, Gtk, GtkLayerShell as Layer, Pango, PangoCairo  # noqa: E402
 
 try:  # events and tasks for Koyomi come from Evolution Data Server (package gir1.2-ecal-2.0); optional
     gi.require_version("ECal", "2.0")
@@ -212,6 +214,13 @@ scale slider { min-width: 14px; min-height: 14px; margin: -5px; border-radius: 7
 .card:hover { background: @hover; }
 .card.active { border-color: @accent; }
 .card .name { font-family: "Kaisei Opti"; font-weight: 700; font-size: 13px; }
+.media-title { font-size: 15px; font-weight: 700; color: @text; }
+.media-btn { min-width: 40px; min-height: 40px; padding: 0; }
+.media-btn label { font-family: "lucide"; font-size: 18px; }
+.play { background: @text; color: @base; border: none; box-shadow: none; background-image: none;
+        border-radius: 20px; min-width: 44px; min-height: 44px; }
+.play label { font-size: 20px; }
+.play:hover { background: @accent; color: @on_accent; }
 .seal { background: @accent; color: @on_accent; border-radius: 4px; min-width: 28px; min-height: 28px;
         font-family: "Kaisei Opti"; font-weight: 700; font-size: 15px; }
 switch { background: alpha(@text, 0.18); border: none; border-radius: 10px; min-height: 18px; }
@@ -1591,6 +1600,161 @@ class Keys(Launcher):
             sh("hyprctl", "dispatch", a["payload"])
 
 
+class Media(Popover):
+    """Now playing, opened from the bar's cover: big cover on a wash of its own colour (the way
+    Spotify tints its player), title, artist, a seek bar and prev / play / next."""
+    name = "media"
+    ART = 292  # popover width minus the panel padding
+
+    def __init__(self, manager):
+        super().__init__(manager)
+        self.tint = Gtk.CssProvider()
+        self.box.get_style_context().add_provider(self.tint, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
+        self.box.get_style_context().add_class("media")
+        self.ticking = False
+
+    @staticmethod
+    def info():
+        try:
+            return json.loads(sh(str(HOME / ".local/bin/shoji-media"), "info") or "{}")
+        except ValueError:
+            return {}
+
+    @staticmethod
+    def cover(url):
+        if url.startswith("file://"):
+            path = Path(GLib.filename_from_uri(url)[0])
+        else:
+            import hashlib
+            path = HOME / ".cache/shoji/covers" / hashlib.sha1(url.encode()).hexdigest()
+        try:
+            return GdkPixbuf.Pixbuf.new_from_file(str(path))
+        except (GLib.Error, TypeError):
+            return None
+
+    @staticmethod
+    def wash(pix):
+        """The cover's most vivid colour (24x24 average weighted by saturation x brightness), made
+        vivid enough to read as a colour, like Spotify does with dull covers."""
+        import colorsys
+        small = pix.scale_simple(24, 24, GdkPixbuf.InterpType.BILINEAR)
+        data, n, stride = small.get_pixels(), small.get_n_channels(), small.get_rowstride()
+        acc, total = [0.0, 0.0, 0.0], 0.0
+        for y in range(24):
+            for x in range(24):
+                r, g, b = (data[y * stride + x * n + i] / 255 for i in range(3))
+                hi, lo = max(r, g, b), min(r, g, b)
+                w = (hi - lo) * hi + 0.02
+                acc = [acc[0] + r * w, acc[1] + g * w, acc[2] + b * w]
+                total += w
+        h, sat, val = colorsys.rgb_to_hsv(*(c / total for c in acc))
+        r, g, b = colorsys.hsv_to_rgb(h, max(sat, 0.45), min(max(val, 0.55), 0.8))
+        return "#%02x%02x%02x" % (round(r * 255), round(g * 255), round(b * 255))
+
+    def build(self):
+        t = self.info()
+        if t.get("status") not in ("Playing", "Paused"):
+            self.tint.load_from_data(b"")
+            self.header("Media")
+            self.box.pack_start(label("Nothing playing", "muted"), False, False, 6)
+            return
+        pix = self.cover(t.get("mpris:artUrl", ""))
+        wash = self.wash(pix) if pix else None
+        self.tint.load_from_data(
+            (f".media {{ background-image: linear-gradient(to bottom, alpha({wash}, 0.6), alpha({wash}, 0.1) 75%); }}"
+             if wash else "").encode())
+        if pix:
+            w, h = pix.get_width(), pix.get_height()
+            if 0.85 < w / h < 1.15:  # album art: square
+                side = min(w, h)
+                pix = pix.new_subpixbuf((w - side) // 2, (h - side) // 2, side, side)
+                size = (self.ART, self.ART)
+            else:  # a video thumbnail (16:9): whole, full width, rather than a blurry crop
+                size = (self.ART, round(self.ART * h / w))
+            pix = pix.scale_simple(*size, GdkPixbuf.InterpType.HYPER)
+            art = Gtk.DrawingArea()
+            art.set_size_request(*size)
+            art.connect("draw", self.draw_art, pix)
+            self.box.pack_start(art, False, False, 0)
+        title = label(t.get("title") or "Unknown", "media-title")
+        title.set_ellipsize(Pango.EllipsizeMode.END)
+        self.box.pack_start(title, False, False, 0)
+        if t.get("artist"):
+            artist = label(t["artist"], "muted")
+            artist.set_ellipsize(Pango.EllipsizeMode.END)
+            self.box.pack_start(artist, False, False, 0)
+        length = int(t.get("mpris:length") or 0) / 1e6
+        if length > 0:
+            self.seek = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, length, 1)
+            self.seek.set_draw_value(False)
+            self.seek.set_value(float(t.get("position") or 0))
+            self.seek.connect("change-value", lambda _s, _scroll, v: (sh("playerctl", "position", str(max(0, v))), False)[1])
+            self.box.pack_start(self.seek, False, False, 4)
+            times = Gtk.Box()
+            self.pos = label(self.clock(self.seek.get_value()), "mono")
+            times.pack_start(self.pos, True, True, 0)
+            times.pack_start(label(self.clock(length), "mono", xalign=1), False, False, 0)
+            self.box.pack_start(times, False, False, 0)
+        else:
+            self.seek = None
+        controls = Gtk.Box(spacing=18, halign=Gtk.Align.CENTER)
+        for name, cmd, cls in (("skip-back", "previous", "nav"),
+                               ("pause" if t["status"] == "Playing" else "play", "toggle", "play"),
+                               ("skip-forward", "next", "nav")):
+            b = Gtk.Button(label=icon(name))
+            b.get_style_context().add_class(cls)
+            b.get_style_context().add_class("media-btn")
+            b.set_valign(Gtk.Align.CENTER)
+            b.connect("clicked", lambda _b, c=cmd: (sh(str(HOME / ".local/bin/shoji-media"), c),
+                                                    GLib.timeout_add(300, self.refresh_open)))
+            controls.pack_start(b, False, False, 0)
+        self.box.pack_start(controls, False, False, 6)
+
+    @staticmethod
+    def clock(sec):
+        sec = int(sec)
+        return f"{sec // 3600}:{sec % 3600 // 60:02d}:{sec % 60:02d}" if sec >= 3600 else f"{sec // 60}:{sec % 60:02d}"
+
+    @staticmethod
+    def draw_art(widget, cr, pix):
+        w, h, r = widget.get_allocated_width(), widget.get_allocated_height(), 12
+        cr.new_sub_path()
+        for x, y, a in ((w - r, r, -math.pi / 2), (w - r, h - r, 0), (r, h - r, math.pi / 2), (r, r, math.pi)):
+            cr.arc(x, y, r, a, a + math.pi / 2)
+        cr.close_path()
+        cr.clip()
+        Gdk.cairo_set_source_pixbuf(cr, pix, (w - pix.get_width()) / 2, 0)
+        cr.paint()
+        return False
+
+    def refresh_open(self):
+        if self.win.get_visible():
+            self.clear()
+            self.build()
+            self.box.show_all()
+        return False
+
+    def tick(self):
+        """Move the seek bar once a second while the popover is open."""
+        if not self.win.get_visible():
+            self.ticking = False
+            return False
+        if self.seek is not None:
+            try:
+                pos = float(sh("playerctl", "position") or 0)
+            except ValueError:
+                pos = 0
+            self.seek.set_value(pos)
+            self.pos.set_text(self.clock(pos))
+        return True
+
+    def show(self):
+        super().show()
+        if not self.ticking:
+            self.ticking = True
+            GLib.timeout_add_seconds(1, self.tick)
+
+
 class Popovers:
     def __init__(self):
         self.backdrop = Backdrop(self.close)
@@ -1598,6 +1762,7 @@ class Popovers:
         self.items["theme"] = ThemeManager(self)
         self.items["launcher"] = Launcher(self)
         self.items["keys"] = Keys(self)
+        self.items["media"] = Media(self)
         self.open = None
         GLib.timeout_add_seconds(300, self.sun_tick)
 

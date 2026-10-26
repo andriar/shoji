@@ -61,8 +61,9 @@ cfg = {
   "notification-visibility": {
     "osd": {"state": "transient", "app-name": "^OSD$"},
   },
-  # no volume slider: the volume keys, the bar ensō and the Sound popover cover it
-  "widgets": ["buttons-grid", "mpris", "title", "notifications"],
+  # no volume slider (volume keys, the bar ensō and the Sound popover cover it) and no media
+  # player (the bar's cover opens the Media popover)
+  "widgets": ["buttons-grid", "title", "notifications"],
   "widget-config": {
     "buttons-grid": {
       # GtkFlowBox puts at most 7 on a line: one row of icons. Shot, Record, Clipboard and Wallpaper

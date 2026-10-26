@@ -66,7 +66,8 @@ sudo pacman -S hyprland waybar swaync fuzzel hyprlock hyprpaper wireplumber libp
 ```
 
 Optional: `ghostty` and `starship` (terminal colors and the `❯` prompt), `btop`, `qt6ct`,
-`brightnessctl` and `power-profiles-daemon` (laptops: brightness ensō, battery popover).
+`brightnessctl` and `power-profiles-daemon` (laptops: brightness ensō, battery popover),
+`playerctl` (now playing on the bar: cover, bars that move while music plays, Media popover).
 For the Koyomi agenda: `gir1.2-ecal-2.0` (Arch: `evolution-data-server`) plus `gnome-calendar`
 and GNOME Online Accounts for Google calendars and tasks. Without it the calendar shows no agenda.
 
