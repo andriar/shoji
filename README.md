@@ -127,6 +127,16 @@ xdg-mime default thunar.desktop inode/directory   # folders from other apps open
 
 Start `thunar --daemon` at login and bind your file-manager key to `thunar`.
 
+### App themes (optional)
+
+Every `shoji apply` also writes themes for the apps you spend the day in. Turn each on once:
+
+| App | Once | After that |
+|---|---|---|
+| VS Code | `shoji vscode`, then Ctrl+K Ctrl+T → Shoji | follows each palette switch (Reload Window if it lags) |
+| Spotify ([spicetify](https://spicetify.app)) | `shoji spotify`, then `spicetify apply` (restarts Spotify) | the colour scheme is set; run `spicetify apply` when convenient |
+| Chrome | `shoji chrome`: load the printed folder unpacked in chrome://extensions | press the extension's reload button |
+
 ### Notification groups (optional)
 
 swaync 0.10+ stacks notifications per app (like iOS: one card, tap to expand). Ubuntu 24.04 ships

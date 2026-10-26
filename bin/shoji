@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Shoji (障子) — one palette file for the whole Hyprland desktop.
 
-Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|date-kanji|weekday-kanji]
+Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome|date-kanji|weekday-kanji]
   apply NAME    switch to a palette (no NAME: re-apply the saved one, quiet; Hyprland autostart)
   list          palettes, the current one marked
   toggle        dark <-> light (Hiru, or Yuki for Aizome)
   doctor        contrast of text / muted / accent against the ground
   gnome         put GTK back to the GNOME session's look (GNOME autostart)
   wallpaper [P] show P (default: the last one) with awww, hyprpaper or swaybg
+  vscode        install the Shoji VS Code theme (once; every apply updates it)
+  spotify       make Shoji the spicetify theme (then run `spicetify apply` when Spotify can restart)
+  chrome        where the Chrome theme is and how to load it
   date-kanji    十月二十四日 · 土曜日   (lock screen)
   weekday-kanji 土                    (bar)
 
@@ -274,6 +277,8 @@ def generate(name):
           f"\tcommit-style = \"{t['accent']}\"\n\tcommit-decoration-style = \"{t['surface2']}\" box ul\n"
           f"\tblame-palette = \"{t['base']} {t['mantle']}\"\n")
 
+    write_apps(name, t)
+
     # widgets + renders
     write(CFG / "shoji/current.json", json.dumps(dict(id=name, **{k: v for k, v in p.items() if k not in ("sky", "hills")},
                                                       tokens=t), indent=1, ensure_ascii=False) + "\n")
@@ -285,6 +290,175 @@ def generate(name):
         _sh.copyfile(wall, CACHE / "lock.png")
     write(STATE, name + "\n")
     return wall
+
+# ---------- app themes (VS Code, Spotify via spicetify, Chrome) ----------
+VSCODE_DIRS = [HOME / ".vscode/extensions", HOME / ".var/app/com.visualstudio.code/data/vscode/extensions"]
+APPS = HOME / ".local/share/shoji/apps"
+
+
+def vscode_theme(name, t):
+    p = PALETTES[name]
+    a = ansi_colors(name)
+    sel = mix(t["base"], t["accent"], 0.28 if p["dark"] else 0.22)
+    colors = {
+        "foreground": t["text"], "focusBorder": t["accent"], "widget.shadow": "#00000040",
+        "editor.background": t["base"], "editor.foreground": t["text"],
+        "editor.lineHighlightBackground": mix(t["base"], t["text"], 0.04),
+        "editor.selectionBackground": sel, "editor.findMatchBackground": mix(t["base"], t["accent"], 0.4),
+        "editorCursor.foreground": t["accent"], "editorLineNumber.foreground": t["overlay0"],
+        "editorLineNumber.activeForeground": t["text"], "editorIndentGuide.background1": t["surface0"],
+        "editorWhitespace.foreground": t["surface1"], "editorGutter.background": t["base"],
+        "editorWidget.background": t["mantle"], "editorSuggestWidget.background": t["mantle"],
+        "editorSuggestWidget.selectedBackground": t["surface0"], "editorHoverWidget.background": t["mantle"],
+        "sideBar.background": t["mantle"], "sideBar.foreground": t["subtext0"], "sideBar.border": t["crust"],
+        "sideBarSectionHeader.background": t["mantle"], "sideBarTitle.foreground": t["text"],
+        "activityBar.background": t["crust"], "activityBar.foreground": t["text"],
+        "activityBar.inactiveForeground": t["overlay0"], "activityBarBadge.background": t["accent"],
+        "activityBarBadge.foreground": t["on_accent"], "activityBar.activeBorder": t["accent"],
+        "titleBar.activeBackground": t["crust"], "titleBar.activeForeground": t["text"],
+        "titleBar.inactiveBackground": t["crust"], "statusBar.background": t["crust"],
+        "statusBar.foreground": t["subtext0"], "statusBar.noFolderBackground": t["crust"],
+        "statusBarItem.remoteBackground": t["accent"], "statusBarItem.remoteForeground": t["on_accent"],
+        "tab.activeBackground": t["base"], "tab.inactiveBackground": t["mantle"],
+        "tab.activeForeground": t["text"], "tab.inactiveForeground": t["overlay0"],
+        "tab.activeBorderTop": t["accent"], "tab.border": t["crust"], "editorGroupHeader.tabsBackground": t["mantle"],
+        "panel.background": t["mantle"], "panel.border": t["crust"], "panelTitle.activeBorder": t["accent"],
+        "list.activeSelectionBackground": t["surface0"], "list.activeSelectionForeground": t["text"],
+        "list.inactiveSelectionBackground": t["surface0"], "list.hoverBackground": mix(t["mantle"], t["text"], 0.05),
+        "list.highlightForeground": t["accent"], "input.background": t["surface0"], "input.border": t["surface1"],
+        "dropdown.background": t["mantle"], "button.background": t["accent"], "button.foreground": t["on_accent"],
+        "badge.background": t["accent"], "badge.foreground": t["on_accent"],
+        "progressBar.background": t["accent"], "scrollbarSlider.background": t["surface0"] + "99",
+        "scrollbarSlider.hoverBackground": t["surface1"], "textLink.foreground": t["info"],
+        "gitDecoration.modifiedResourceForeground": t["warn"], "gitDecoration.untrackedResourceForeground": t["ok"],
+        "gitDecoration.deletedResourceForeground": t["alert"], "errorForeground": t["alert"],
+        "editorError.foreground": t["alert"], "editorWarning.foreground": t["warn"], "editorInfo.foreground": t["info"],
+        "terminal.background": t["base"], "terminal.foreground": t["text"], "terminalCursor.foreground": t["accent"],
+        **{f"terminal.ansi{n}": a[i] for i, n in enumerate(
+            ["Black", "Red", "Green", "Yellow", "Blue", "Magenta", "Cyan", "White", "BrightBlack", "BrightRed",
+             "BrightGreen", "BrightYellow", "BrightBlue", "BrightMagenta", "BrightCyan", "BrightWhite"])},
+    }
+    def tok(scope, color, style=None):
+        rule = {"scope": scope, "settings": {"foreground": color}}
+        if style:
+            rule["settings"]["fontStyle"] = style
+        return rule
+    tokens_ = [
+        tok(["comment", "punctuation.definition.comment"], t["overlay0"], "italic"),
+        tok(["keyword", "storage", "storage.type", "keyword.control"], a[3]),     # gold / ochre
+        tok(["string", "markup.inline.raw"], a[2]),
+        tok(["constant.numeric", "constant.language", "constant.character"], a[5]),
+        tok(["entity.name.function", "support.function", "meta.function-call"], a[4]),
+        tok(["entity.name.type", "entity.name.class", "support.type", "support.class"], a[6]),
+        tok(["entity.name.tag"], a[1]), tok(["entity.other.attribute-name"], a[3], "italic"),
+        tok(["variable.parameter"], t["subtext0"], "italic"), tok(["variable", "meta.definition.variable"], t["text"]),
+        tok(["keyword.operator", "punctuation"], t["subtext0"]),
+        tok(["markup.heading", "markup.bold"], t["accent"], "bold"), tok(["markup.italic"], t["text"], "italic"),
+        tok(["markup.inserted"], t["ok"]), tok(["markup.deleted"], t["alert"]), tok(["invalid"], t["alert"]),
+    ]
+    return {"name": "Shoji", "type": "dark" if p["dark"] else "light", "colors": colors,
+            "tokenColors": tokens_, "semanticHighlighting": True}
+
+
+def write_vscode(name, t):
+    """A theme extension: `shoji vscode` installs it once (code --install-extension); after that
+    every apply rewrites the installed theme file, and VS Code follows (Reload Window if not)."""
+    p = PALETTES[name]
+    theme = json.dumps(vscode_theme(name, t), indent=1)
+    package = json.dumps({
+        "name": "shoji-theme", "displayName": "Shoji", "publisher": "shoji", "version": "0.1.0",
+        "description": "The current Shoji palette (generated by shoji apply)",
+        "engines": {"vscode": "^1.60.0"}, "categories": ["Themes"],
+        "contributes": {"themes": [{"label": "Shoji", "uiTheme": "vs-dark" if p["dark"] else "vs",
+                                    "path": "./themes/shoji.json"}]}}, indent=1)
+    src = APPS / "vscode"
+    write(src / "package.json", package)
+    write(src / "themes/shoji.json", theme)
+    for d in VSCODE_DIRS:
+        for inst in d.glob("shoji.shoji-theme-*"):
+            write(inst / "themes/shoji.json", theme)
+            write(inst / "package.json", package)
+
+
+def install_vscode():
+    import shutil
+    import zipfile
+    vsix = APPS / "shoji-theme.vsix"
+    with zipfile.ZipFile(vsix, "w") as z:
+        z.writestr("extension.vsixmanifest", """<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011">
+ <Metadata><Identity Language="en-US" Id="shoji-theme" Version="0.1.0" Publisher="shoji"/>
+  <DisplayName>Shoji</DisplayName><Description xml:space="preserve">Shoji palette</Description>
+  <Categories>Themes</Categories></Metadata>
+ <Installation><InstallationTarget Id="Microsoft.VisualStudio.Code"/></Installation>
+ <Dependencies/>
+ <Assets><Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true"/></Assets>
+</PackageManifest>
+""")
+        z.writestr("[Content_Types].xml", '<?xml version="1.0" encoding="utf-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension=".json" ContentType="application/json"/><Default Extension=".vsixmanifest" ContentType="text/xml"/></Types>')
+        z.write(APPS / "vscode/package.json", "extension/package.json")
+        z.write(APPS / "vscode/themes/shoji.json", "extension/themes/shoji.json")
+    done = False
+    for cmd in (["code"], ["flatpak", "run", "com.visualstudio.code"]):
+        if shutil.which(cmd[0]) and subprocess.run([*cmd, "--install-extension", str(vsix), "--force"]).returncode == 0:
+            done = True
+    print("VS Code: pick it with Ctrl+K Ctrl+T → Shoji" if done else f"VS Code not found; the extension is at {vsix}")
+
+
+def spicetify_ini():
+    """Every palette as a spicetify colour scheme; `shoji spotify` selects the current one."""
+    out = [f"; Generated by shoji: one section per palette\n"]
+    for pid in PALETTES:
+        t = tokens(pid)
+        rows = {"text": t["text"], "subtext": t["subtext0"], "main": t["base"], "main-elevated": t["surface0"],
+                "highlight": t["surface0"], "highlight-elevated": t["surface1"], "sidebar": t["mantle"],
+                "player": t["mantle"], "card": t["surface0"], "shadow": t["crust"], "selected-row": t["text"],
+                "button": t["accent"], "button-active": t["accent"], "button-disabled": t["overlay0"],
+                "tab-active": t["surface1"], "notification": t["surface1"], "notification-error": t["alert"],
+                "misc": t["overlay0"]}
+        out.append(f"[{pid}]\n" + "".join(f"{k:<20} = {v.lstrip('#')}\n" for k, v in rows.items()))
+    return "\n".join(out)
+
+
+def write_spotify(name):
+    d = CFG / "spicetify/Themes/Shoji"
+    if not (CFG / "spicetify").exists():
+        return
+    write(d / "color.ini", spicetify_ini())
+    if not (d / "user.css").exists():
+        write(d / "user.css", "/* Shoji: colours come from color.ini (one section per palette) */\n")
+    ini = CFG / "spicetify/config-xpui.ini"
+    if ini.exists() and re.search(r"^current_theme\s*=\s*Shoji\s*$", ini.read_text(), re.M):
+        sed(ini, r"^color_scheme\s*=.*$", f"color_scheme           = {name}")  # takes effect on `spicetify apply`
+
+
+def write_chrome(name, t):
+    """An unpacked Chrome theme: load the folder once (chrome://extensions, Developer mode,
+    Load unpacked); after a palette change press its reload button."""
+    def c(h):
+        return list(rgb(h))
+    write(APPS / "chrome/manifest.json", json.dumps({
+        "manifest_version": 3, "name": "Shoji", "version": "0.1.0",
+        "description": f"Shoji palette ({PALETTES[name]['name']})",
+        "theme": {"colors": {
+            "frame": c(t["crust"]), "frame_inactive": c(t["crust"]), "toolbar": c(t["mantle"]),
+            "tab_text": c(t["text"]), "tab_background_text": c(t["overlay0"]), "bookmark_text": c(t["subtext0"]),
+            "ntp_background": c(t["base"]), "ntp_text": c(t["text"]), "ntp_link": c(t["accent"]),
+            "omnibox_background": c(t["surface0"]), "omnibox_text": c(t["text"]),
+            "toolbar_button_icon": c(t["subtext0"]), "button_background": c(t["surface0"])},
+            "properties": {"ntp_logo_alternate": 1}}}, indent=1))
+
+
+def shutil_which(prog):
+    import shutil
+    return shutil.which(prog) or (HOME / ".local/bin" / prog).exists()
+
+
+def write_apps(name, t):
+    write_vscode(name, t)
+    write_spotify(name)
+    write_chrome(name, t)
+
 
 
 def cursor_installed():
@@ -809,6 +983,20 @@ def main():
         cmd_doctor(args[1] if len(args) > 1 else current())
     elif cmd == "gnome":
         gnome_reset()
+    elif cmd == "vscode":
+        write_vscode(current(), tokens(current()))
+        install_vscode()
+    elif cmd == "spotify":
+        if not shutil_which("spicetify"):
+            sys.exit("spicetify not found (https://spicetify.app)")
+        write_spotify(current())
+        run("spicetify", "config", "current_theme", "Shoji", "color_scheme", current())
+        print("Shoji is the spicetify theme now: run `spicetify apply` (it restarts Spotify).\n"
+              "Every `shoji apply` then sets the matching colour scheme for the next spicetify apply.")
+    elif cmd == "chrome":
+        write_chrome(current(), tokens(current()))
+        print(f"Chrome: chrome://extensions → Developer mode → Load unpacked → {APPS / 'chrome'}\n"
+              "After a palette change, press that extension's reload button.")
     elif cmd == "wallpaper":
         set_wallpaper(args[1] if len(args) > 1 else None)
     elif cmd == "date-kanji":
