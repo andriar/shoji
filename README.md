@@ -125,6 +125,25 @@ xdg-mime default thunar.desktop inode/directory   # folders from other apps open
 
 Start `thunar --daemon` at login and bind your file-manager key to `thunar`.
 
+### Notification groups (optional)
+
+swaync 0.10+ stacks notifications per app (like iOS: one card, tap to expand). Ubuntu 24.04 ships
+0.9, so build 0.11.0, the last GTK3 release (0.12 needs GTK 4.16 and newer libraries than 24.04
+has). Installing to `/usr/local` puts it ahead of the packaged one in PATH; the package stays.
+
+```sh
+sudo apt install valac meson sassc scdoc libhandy-1-dev libgranite-dev libjson-glib-dev libpulse-dev
+curl -L https://github.com/ErikReider/SwayNotificationCenter/archive/refs/tags/v0.11.0.tar.gz | tar xz
+cd SwayNotificationCenter-0.11.0
+meson setup build --prefix=/usr/local -Dsystemd-service=false -Dman-pages=false \
+  -Dzsh-completions=false -Dbash-completions=false -Dfish-completions=false
+ninja -C build && sudo ninja -C build install    # undo: sudo ninja -C build uninstall
+pkill -x swaync; swaync &                         # restarting clears current notifications
+```
+
+Shoji's swaync theme styles the stacks (an opaque fill for collapsed cards, so the ones behind
+do not show through).
+
 ### Uninstall
 
 ```sh
