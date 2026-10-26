@@ -937,6 +937,167 @@ class Keys(Launcher):
             sh("hyprctl", "dispatch", a["payload"])
 
 
+class Clipboard(Popover):
+    """写 Clipboard history (cliphist): newest first, type to search, Enter or a click puts an entry
+    back on the clipboard. Each row has a delete button (or press Delete on the selected one);
+    "Clear all" asks once more before it wipes the history. Images show as small thumbnails."""
+    name = "clipboard"
+    width = 560
+    ROWS = 8
+    THUMBS = 24  # decode at most this many images per open
+
+    def __init__(self, manager):
+        super().__init__(manager, anchor_right=False)
+        Layer.set_margin(self.win, Layer.Edge.TOP, 120)
+        Layer.set_keyboard_mode(self.win, Layer.KeyboardMode.EXCLUSIVE)
+        self.confirm = 0
+
+    def entries(self):
+        return [line for line in sh("cliphist", "list").splitlines() if "\t" in line]
+
+    def build(self):
+        self.entry = Gtk.Entry(placeholder_text="Search clipboard history")
+        self.entry.get_style_context().add_class("search")
+        self.entry.connect("changed", lambda *_: self.listbox.invalidate_filter())
+        self.entry.connect("activate", lambda *_: self.paste(self.listbox.get_selected_row()))
+        bar = Gtk.Box(spacing=8)
+        bar.get_style_context().add_class("searchbar")
+        bar.pack_start(label(icon("clipboard"), "icon"), False, False, 0)
+        bar.pack_start(self.entry, True, True, 0)
+        self.wipe = Gtk.Button(label="Clear all")
+        self.wipe.get_style_context().add_class("chip")
+        self.wipe.set_valign(Gtk.Align.CENTER)
+        self.wipe.connect("clicked", lambda *_: self.clear_all())
+        bar.pack_start(self.wipe, False, False, 0)
+        self.box.pack_start(bar, False, False, 0)
+        self.listbox = Gtk.ListBox()
+        self.listbox.set_selection_mode(Gtk.SelectionMode.BROWSE)
+        self.listbox.set_activate_on_single_click(True)
+        self.listbox.connect("row-activated", lambda _l, row: self.paste(row))
+        self.listbox.set_filter_func(self.matches)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_size_request(-1, self.ROWS * 44)
+        scroll.add(self.listbox)
+        self.glide = Glide(scroll)
+        self.box.pack_start(scroll, False, False, 0)
+        lines = self.entries()
+        if not lines:
+            self.box.pack_start(label("Nothing copied yet", "muted"), False, False, 8)
+        thumbs = 0
+        for line in lines:
+            ident, preview = line.split("\t", 1)
+            row = Gtk.ListBoxRow()
+            row.get_style_context().add_class("app-row")
+            row.line, row.text = line, preview.lower()
+            box = Gtk.Box(spacing=10)
+            image = preview.startswith("[[ binary data")
+            if image and thumbs < self.THUMBS:
+                thumbs += 1
+                pix = self.thumbnail(ident)
+                box.pack_start(Gtk.Image.new_from_pixbuf(pix) if pix else label(icon("image"), "icon"), False, False, 0)
+            else:
+                box.pack_start(label(icon("image" if image else "type"), "icon"), False, False, 0)
+            text = label(self.describe(preview) if image else " ".join(preview.split())[:200])
+            text.set_ellipsize(Pango.EllipsizeMode.END)
+            box.pack_start(text, True, True, 0)
+            trash = Gtk.Button(label=icon("trash-2"))
+            trash.get_style_context().add_class("nav")
+            trash.set_tooltip_text("Delete from history")
+            trash.connect("clicked", lambda _b, r=row: self.delete(r))
+            box.pack_start(trash, False, False, 0)
+            row.add(box)
+            self.listbox.add(row)
+        first = self.listbox.get_row_at_index(0)
+        if first:
+            self.listbox.select_row(first)
+        self.box.pack_start(label("↑↓ move · ↵ copy · Del delete · Esc close", "mono"), False, False, 2)
+
+    @staticmethod
+    def describe(preview):
+        """"[[ binary data 48 KiB png 1920x1080 ]]" -> "Image · png · 1920×1080 · 48 KiB"."""
+        words = preview.strip("[] ").split()[2:]  # 48 KiB png 1920x1080
+        if len(words) >= 4:
+            return f"Image · {words[2]} · {words[3].replace('x', '×')} · {words[0]} {words[1]}"
+        return "Image"
+
+    @staticmethod
+    def thumbnail(ident):
+        try:
+            data = subprocess.run(["cliphist", "decode", ident], capture_output=True, timeout=2).stdout
+            loader = GdkPixbuf.PixbufLoader()
+            loader.write(data)
+            loader.close()
+            pix = loader.get_pixbuf()
+            scale = 28 / max(pix.get_width(), pix.get_height())
+            return pix.scale_simple(max(1, round(pix.get_width() * scale)), max(1, round(pix.get_height() * scale)),
+                                    GdkPixbuf.InterpType.BILINEAR)
+        except (GLib.Error, OSError, subprocess.TimeoutExpired, ZeroDivisionError):
+            return None
+
+    def matches(self, row):
+        q = self.entry.get_text().strip().lower()
+        return not q or all(word in row.text for word in q.split())
+
+    def paste(self, row):
+        if row is None:
+            return
+        ident = row.line.split("\t", 1)[0]
+        subprocess.Popen(["sh", "-c", f"cliphist decode {int(ident)} | wl-copy"], start_new_session=True)
+        self.manager.close()
+
+    def delete(self, row):
+        subprocess.run(["cliphist", "delete"], input=row.line, text=True, timeout=3)
+        index = row.get_index()
+        self.listbox.remove(row)
+        nxt = self.listbox.get_row_at_index(index) or self.listbox.get_row_at_index(index - 1)
+        if nxt:
+            self.listbox.select_row(nxt)
+
+    def clear_all(self):
+        if not self.confirm:  # a second click within 3 s really wipes
+            self.wipe.set_label("Sure? Clear")
+            self.wipe.get_style_context().add_class("on")
+            self.confirm = GLib.timeout_add(3000, self.unconfirm)
+            return
+        GLib.source_remove(self.confirm)
+        self.confirm = 0
+        sh("cliphist", "wipe")
+        self.manager.close()
+
+    def unconfirm(self):
+        self.confirm = 0
+        self.wipe.set_label("Clear all")
+        self.wipe.get_style_context().remove_class("on")
+        return False
+
+    def on_key(self, w, ev):
+        rows = [r for r in self.listbox.get_children() if r.get_child_visible() and self.matches(r)]
+        cur = self.listbox.get_selected_row()
+        if ev.keyval == Gdk.KEY_Delete and cur is not None:
+            self.delete(cur)
+            return True
+        if ev.keyval in (Gdk.KEY_Down, Gdk.KEY_Up) and rows:
+            i = rows.index(cur) if cur in rows else -1
+            nxt = rows[max(0, min(len(rows) - 1, i + (1 if ev.keyval == Gdk.KEY_Down else -1)))]
+            self.listbox.select_row(nxt)
+            a, adj = nxt.get_allocation(), self.glide.adj
+            view = self.glide.target if self.glide.tick else adj.get_value()
+            if a.y < view:
+                self.glide.to(a.y)
+            elif a.y + a.height > view + adj.get_page_size():
+                self.glide.to(a.y + a.height - adj.get_page_size())
+            return True
+        return super().on_key(w, ev)
+
+    def show(self):
+        if self.confirm:
+            GLib.source_remove(self.confirm)
+            self.confirm = 0
+        super().show()
+        self.entry.grab_focus()
+
+
 class Media(Popover):
     """Now playing, opened from the bar's cover: big cover on a wash of its own colour (the way
     Spotify tints its player), title, artist, a seek bar and prev / play / next."""
@@ -1154,6 +1315,7 @@ class Popovers:
         self.items["launcher"] = Launcher(self)
         self.items["keys"] = Keys(self)
         self.items["media"] = Media(self)
+        self.items["clipboard"] = Clipboard(self)
         self.open = None
         GLib.timeout_add_seconds(300, self.sun_tick)
 

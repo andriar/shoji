@@ -70,6 +70,8 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
 - **Launcher** (Super+Space): frequent apps first; Enter focuses an app that is already open.
 - **Shortcuts sheet** (Super+/): every bind, aligned in columns; click to run, type to search.
 - **Instant terminal**: a ghostty window in ~20 ms (`hypr-term`).
+- **Clipboard history** (Super+Shift+V): newest first, search, Enter to copy back, a delete button on
+  every entry (or Del), and Clear all (asks once more); images show as thumbnails.
 - **Screenshots** (PrtSc): copied and saved, then a small card in the corner with the picture and
   Open / Folder / Delete; it leaves by itself after 6 s.
 - **Tabbed windows** (Super+T) as paper tabs; **one key per app** (Super+K Slack, Super+B browser…).

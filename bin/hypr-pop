@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Open (or close, if already open) a Shoji popover drawn by hypr-widgets.
-# Usage: hypr-pop audio|network|bluetooth|battery|media|theme|launcher [query]|keys [query]
+# Usage: hypr-pop audio|network|bluetooth|battery|media|clipboard|theme|launcher [query]|keys [query]
 # Falls back to the old tools when hypr-widgets is not running.
 fifo=${XDG_RUNTIME_DIR:-/tmp}/hypr-osd.fifo
 pid=$(cat "${XDG_RUNTIME_DIR:-/tmp}/hypr-widgets.pid" 2>/dev/null)

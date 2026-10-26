@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Clipboard history (Super+Shift+V): the Shoji popover (search, copy back, delete, clear all) when
+# hypr-widgets runs; otherwise a fuzzel picker. Needs cliphist storing copies
+# (wl-paste --watch cliphist store at login).
+pid=$(cat "${XDG_RUNTIME_DIR:-/tmp}/hypr-widgets.pid" 2>/dev/null)
+if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+  exec ~/.local/bin/hypr-pop clipboard
+fi
+cliphist list | fuzzel --dmenu --prompt="  " --placeholder="Search clipboard history" --width=64 \
+  | cliphist decode | wl-copy

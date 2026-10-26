@@ -8,9 +8,9 @@
   calendar  Koyomi: kanji week, today as a seal; sits left of the swaync control center
             while it is open (follows swaync's SubscribeV2 cc_open signal). Click a day for its
             events and due tasks from Evolution Data Server (what GNOME Calendar shows).
-  popovers  Sound (devices + volume), Network, Battery, Media (now playing), the Theme manager, the
-            launcher and the shortcuts sheet. hypr-pop writes
-            "pop<TAB>audio|network|bluetooth|battery|media|theme|launcher|keys" to $FIFO;
+  popovers  Sound (devices + volume), Network, Bluetooth, Battery, Media (now playing), Clipboard
+            history, the Theme manager, the launcher and the shortcuts sheet. hypr-pop writes
+            "pop<TAB>audio|network|bluetooth|battery|media|clipboard|theme|launcher|keys" to $FIFO;
             the same line again closes it.
 
 The surfaces live in the shoji_widgets package (widgets/ in the repo, ~/.local/share/shoji/widgets

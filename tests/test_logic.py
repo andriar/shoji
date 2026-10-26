@@ -135,6 +135,13 @@ class Weather(unittest.TestCase):
             self.assertIn(code, codes)
 
 
+class Clipboard(unittest.TestCase):
+    def test_image_entries_read_as_images(self):
+        from shoji_widgets.popovers import Clipboard
+        self.assertEqual(Clipboard.describe("[[ binary data 48 KiB png 1920x1080 ]]"), "Image · png · 1920×1080 · 48 KiB")
+        self.assertEqual(Clipboard.describe("[[ binary data ]]"), "Image")
+
+
 class Media(unittest.TestCase):
     def test_the_playing_player_wins(self):
         media = load("shoji-media")
