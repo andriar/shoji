@@ -6,6 +6,7 @@ Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome
   list          palettes, the current one marked
   toggle        dark <-> light (Hiru, or Yuki for Aizome)
   doctor        contrast of text / muted / accent against the ground
+  doctor --deps what is installed, and what each missing piece would add
   gnome         put GTK back to the GNOME session's look (GNOME autostart)
   wallpaper [P] show P (default: the last one) with awww, hyprpaper or swaybg
   vscode        install the Shoji VS Code theme (once; every apply updates it)
@@ -1160,6 +1161,58 @@ def cmd_greet():
     print(f"\033[2m{kanji} {english.lower()}{nxt}\033[0m")
 
 
+DEPS = [  # (needed?, what to look for, what it gives)
+    (True, "hyprctl", "Hyprland"), (True, "waybar", "the bar"), (True, "swaync", "notifications and Koyomi's panel"),
+    (True, "fuzzel", "pickers (screenshot menu, emoji)"), (True, "hyprlock", "the lock screen"),
+    (True, "wpctl", "volume (PipeWire)"), (True, "nmcli", "the Network popover"),
+    (True, "py:GtkLayerShell", "hypr-widgets (Koyomi, popovers, OSD)"),
+    (False, "playerctl", "now playing on the bar and the Media popover"),
+    (False, "py:ECal", "Koyomi's agenda, reminders, Silent in meetings (gir1.2-ecal-2.0)"),
+    (False, "gnome-calendar", "opening a day from Koyomi"),
+    (False, "swaync>=0.10", "notifications stacked per app (README: build 0.11 on Ubuntu 24.04)"),
+    (False, "bluetoothctl", "the Bluetooth popover and low-battery on the bar"),
+    (False, "grim", "screenshots"), (False, "slurp", "screenshots of an area"),
+    (False, "wl-copy", "screenshots to the clipboard"), (False, "wf-recorder", "screen recording"),
+    (False, "cliphist", "clipboard history"), (False, "pw-play", "the 鈴 bell"),
+    (False, "awww|hyprpaper|swaybg", "the wallpaper"), (False, "hypridle", "locking when idle"),
+    (False, "ghostty", "terminal colours and hypr-term"), (False, "starship", "the ❯ prompt"),
+    (False, "bat", "highlighted files in the palette"), (False, "delta", "diffs in the palette"),
+    (False, "fzf", "fuzzy finder in the palette"), (False, "btop", "the system monitor (cpu · mem click)"),
+    (False, "thunar", "the file manager on paper"), (False, "qt6ct", "Qt apps in the palette"),
+    (False, "code", "the VS Code theme (shoji vscode)"), (False, "spicetify", "the Spotify theme (shoji spotify)"),
+    (False, "brightnessctl", "brightness keys and ensō (laptops)"),
+    (False, "powerprofilesctl", "power modes in the Battery popover (laptops)"),
+]
+
+
+def dep_found(what):
+    import shutil
+    if what.startswith("py:"):
+        lib = what[3:]
+        version = {"GtkLayerShell": "0.1", "ECal": "2.0"}[lib]
+        return subprocess.run([sys.executable, "-c", f"import gi; gi.require_version('{lib}', '{version}')"],
+                              capture_output=True).returncode == 0
+    if what == "swaync>=0.10":
+        out = subprocess.run(["swaync", "--version"], capture_output=True, text=True).stdout.split()
+        try:
+            major, minor = (int(x) for x in out[-1].split(".")[:2])
+            return (major, minor) >= (0, 10)
+        except (IndexError, ValueError):
+            return False
+    return any(shutil.which(w) or (HOME / ".local/bin" / w).exists() or (HOME / ".cargo/bin" / w).exists()
+               for w in what.split("|"))
+
+
+def cmd_deps():
+    missing = 0
+    for needed, what, gives in DEPS:
+        ok = dep_found(what)
+        missing += needed and not ok
+        mark = "ok  " if ok else ("MISS" if needed else "–   ")
+        print(f"  {mark} {what.removeprefix('py:'):<24} {gives}")
+    print("\nAll needed pieces are there." if not missing else f"\n{missing} needed piece(s) missing.")
+
+
 def cmd_doctor(name):
     t = tokens(name)
     print(f"{PALETTES[name]['name']} on {t['base']}")
@@ -1187,6 +1240,8 @@ def main():
         cur = current()
         for k, p in PALETTES.items():
             print(f"{'●' if k == cur else ' '} {k:<9} {p['kanji']:<3} {p['note']} ({'dark' if p['dark'] else 'light'})")
+    elif cmd == "doctor" and "--deps" in args:
+        cmd_deps()
     elif cmd == "doctor":
         cmd_doctor(args[1] if len(args) > 1 else current())
     elif cmd == "gnome":

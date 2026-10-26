@@ -221,6 +221,7 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 |---|---|
 | `shoji apply koke` · `shoji list` | switch palette · list them |
 | `shoji doctor` | contrast and font check for the current palette |
+| `shoji doctor --deps` | what is installed, and what each missing piece would add |
 | `shoji vscode` · `shoji spotify` · `shoji chrome` | turn on an app theme (once) |
 | `shoji greet` · `shoji season` · `shoji moon` | today's 候 and what is next · the season · redraw the moon |
 
