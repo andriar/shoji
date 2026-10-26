@@ -99,6 +99,19 @@ STRINGS = {  # English text -> (Indonesian, Japanese)
     "Delete from history": ("Hapus dari riwayat", "履歴から削除"), "No windows": ("Tidak ada jendela", "ウィンドウなし"),
     "↑↓ move · ↵ copy · Del delete · Esc close": ("↑↓ pindah · ↵ salin · Del hapus · Esc tutup", "↑↓ 移動 · ↵ コピー · Del 削除 · Esc 閉じる"),
     "Language": ("Bahasa", "言語"),
+    "Preferences": ("Preferensi", "設定"), "Preferences…": ("Preferensi…", "設定…"),
+    "Workspace numbers": ("Nomor workspace", "ワークスペース番号"),
+    "Reduced motion": ("Kurangi gerak", "動きを減らす"),
+    "Nothing animates anywhere (Super+Shift+M)": ("Tidak ada animasi di mana pun (Super+Shift+M)", "すべてのアニメーションを止める（Super+Shift+M）"),
+    "Ink screen when idle": ("Layar tinta saat diam", "離席中の墨の画面"),
+    "Ink blooms on the ground after 8 minutes; the lock follows": ("Tinta mekar setelah 8 menit; lalu layar terkunci", "8 分後に墨がにじみ、続いてロック"),
+    "Quiet in meetings": ("Senyap saat rapat", "会議中は静かに"),
+    "Silent while an event runs or the screen is shared": ("Senyap selama ada acara atau layar dibagikan", "予定の間と画面共有中は通知オフ"),
+    "Rin bell": ("Lonceng rin", "鈴"),
+    "A soft bell for critical notifications and reminders": ("Lonceng lembut untuk notifikasi penting dan pengingat", "重要な通知とリマインダーに小さな鈴"),
+    "Terminal greeting": ("Sapaan terminal", "ターミナルのあいさつ"),
+    "Today's 候 and what is next, in each new terminal": ("候 hari ini dan agenda berikutnya di tiap terminal baru", "新しいターミナルに今日の候と次の予定"),
+    "Kept in ~/.config/shoji/prefs.json": ("Disimpan di ~/.config/shoji/prefs.json", "~/.config/shoji/prefs.json に保存"),
     "Fully charged": ("Terisi penuh", "充電完了"), "Charging": ("Mengisi daya", "充電中"),
     "Battery low": ("Baterai lemah", "バッテリー残量低下"), "On battery": ("Pakai baterai", "バッテリー駆動"),
     "Desktop on mains power": ("Desktop pakai listrik langsung", "AC 電源のデスクトップ"),
@@ -277,7 +290,7 @@ scale slider { min-width: 14px; min-height: 14px; margin: -5px; border-radius: 7
         font-family: "Kaisei Opti"; font-weight: 700; font-size: 15px; }
 switch { background: alpha(@text, 0.18); border: none; border-radius: 10px; min-height: 18px; }
 switch:checked { background: @accent; }
-switch slider { background: @text; border: none; border-radius: 8px; min-width: 14px; min-height: 14px; }
+switch slider { background: @text; border: none; border-radius: 8px; min-width: 14px; min-height: 14px; margin: 2px; }
 switch:checked slider { background: @on_accent; }
 
 /* launcher */

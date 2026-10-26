@@ -388,14 +388,10 @@ class ThemeManager(Popover):
         sw.connect("notify::active", lambda s, _p: (save_prefs(follow_sun=s.get_active()), self.manager.sun_tick(force=True)))
         opts.pack_start(sw, False, False, 0)
         opts.pack_start(label(T("Follow the sun: light palette 06:00–18:00, your dark one after"), "muted"), False, False, 0)
-        num = Gtk.Button(label="一二三 → 123" if pr.get("numerals", "kanji") == "kanji" else "123 → 一二三")
-        num.get_style_context().add_class("chip")
-        num.connect("clicked", lambda *_: self.toggle_numerals())
-        opts.pack_end(num, False, False, 0)
-        lang = Gtk.Button(label=f"{T('Language')} · {LANGS.get(LANG['code'], 'English')}")
-        lang.get_style_context().add_class("chip")
-        lang.connect("clicked", lambda *_: self.next_language())
-        opts.pack_end(lang, False, False, 0)
+        more = Gtk.Button(label=T("Preferences…"))
+        more.get_style_context().add_class("chip")
+        more.connect("clicked", lambda *_: self.manager.toggle("prefs"))
+        opts.pack_end(more, False, False, 0)
         self.box.pack_start(opts, False, False, 4)
         season = (sh(SHOJI, "season").split() + ["", "", ""])[:3]
         seas = Gtk.Box(spacing=10)
@@ -521,17 +517,6 @@ class ThemeManager(Popover):
     def set_seasonal(self, on, season_id):
         save_prefs(seasonal=on, season=season_id)
         subprocess.run([SHOJI, "apply"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.show()
-
-    def next_language(self):
-        codes = list(LANGS)
-        save_prefs(lang=codes[(codes.index(LANG["code"]) + 1) % len(codes)] if LANG["code"] in codes else "id")
-        self.show()
-
-    def toggle_numerals(self):
-        save_prefs(numerals="arabic" if prefs().get("numerals", "kanji") == "kanji" else "kanji")
-        subprocess.run([sys.executable, str(HOME / ".config/shoji/gen_waybar.py")], stdout=subprocess.DEVNULL)
-        sh("pkill", "-SIGUSR2", "-x", "waybar")
         self.show()
 
 
@@ -1573,6 +1558,76 @@ class Media(Popover):
             GLib.timeout_add_seconds(1, self.tick)
 
 
+class Preferences(Popover):
+    """設 Every choice Shoji keeps in prefs.json, one line each, so nothing needs editing by hand.
+    ROWS is data: a feature with a setting adds one row."""
+    name = "prefs"
+    width = 420
+    # key, title, what it does, default
+    ROWS = [
+        ("reduced_motion", "Reduced motion", "Nothing animates anywhere (Super+Shift+M)", False),
+        ("ink", "Ink screen when idle", "Ink blooms on the ground after 8 minutes; the lock follows", True),
+        ("auto_silent", "Quiet in meetings", "Silent while an event runs or the screen is shared", True),
+        ("rin", "Rin bell", "A soft bell for critical notifications and reminders", True),
+        ("greet", "Terminal greeting", "Today's 候 and what is next, in each new terminal", False),
+    ]
+    CHOICES = [  # key, title, [(value, label)], default
+        ("lang", "Language", [("en", "English"), ("id", "Indonesia"), ("ja", "日本語")], "en"),
+        ("numerals", "Workspace numbers", [("kanji", "一二三"), ("arabic", "123")], "kanji"),
+    ]
+
+    def __init__(self, manager):
+        super().__init__(manager, anchor_right=False)
+        Layer.set_margin(self.win, Layer.Edge.TOP, 90)
+
+    def build(self):
+        pr = prefs()
+        head = Gtk.Box(spacing=12)
+        head.pack_start(label("設", "seal", xalign=0.5), False, False, 0)
+        head.pack_start(label(T("Preferences"), "title"), True, True, 0)
+        self.box.pack_start(head, False, False, 4)
+        for key, title, choices, default in self.CHOICES:
+            line = Gtk.Box(spacing=10)
+            line.pack_start(label(T(title)), True, True, 0)
+            seg = Gtk.Box(spacing=4)
+            for value, name in choices:
+                b = Gtk.Button(label=name)
+                b.get_style_context().add_class("chip")
+                if pr.get(key, default) == value:
+                    b.get_style_context().add_class("on")
+                b.connect("clicked", lambda _b, k=key, v=value: self.choose(k, v))
+                seg.pack_start(b, False, False, 0)
+            line.pack_end(seg, False, False, 0)
+            self.box.pack_start(line, False, False, 2)
+        self.box.pack_start(sep(), False, False, 4)
+        for key, title, what, default in self.ROWS:
+            line = Gtk.Box(spacing=12)
+            words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+            words.pack_start(label(T(title)), False, False, 0)
+            desc = label(T(what), "muted")
+            desc.set_line_wrap(True)
+            words.pack_start(desc, False, False, 0)
+            line.pack_start(words, True, True, 0)
+            sw = Gtk.Switch(active=bool(pr.get(key, default)), valign=Gtk.Align.CENTER)
+            sw.connect("notify::active", lambda s, _p, k=key: self.flip(k, s.get_active()))
+            line.pack_end(sw, False, False, 0)
+            self.box.pack_start(line, False, False, 3)
+        self.box.pack_start(label(T("Kept in ~/.config/shoji/prefs.json"), "mono"), False, False, 2)
+
+    def flip(self, key, on):
+        if key == "reduced_motion":   # hypr-motion saves it and tells every part of the desktop
+            spawn(str(HOME / ".local/bin/hypr-motion"), "on" if on else "off")
+        else:
+            save_prefs(**{key: on})
+
+    def choose(self, key, value):
+        save_prefs(**{key: value})
+        if key == "numerals":
+            subprocess.run([sys.executable, str(HOME / ".config/shoji/gen_waybar.py")], stdout=subprocess.DEVNULL)
+            sh("pkill", "-SIGUSR2", "-x", "waybar")
+        self.show()   # a new language shows at once
+
+
 class Popovers:
     def __init__(self):
         self.backdrop = Backdrop(self.close)
@@ -1583,6 +1638,7 @@ class Popovers:
         self.items["media"] = Media(self)
         self.items["clipboard"] = Clipboard(self)
         self.items["switch"] = Switch(self)
+        self.items["prefs"] = Preferences(self)
         self.open = None
         GLib.timeout_add_seconds(300, self.sun_tick)
 
