@@ -173,12 +173,14 @@ curl -L https://github.com/ErikReider/SwayNotificationCenter/archive/refs/tags/v
 cd SwayNotificationCenter-0.11.0
 meson setup build --prefix=/usr/local -Dsystemd-service=false -Dman-pages=false \
   -Dzsh-completions=false -Dbash-completions=false -Dfish-completions=false
+patch -p1 < ~/shoji/docs/patches/swaync-0.11.0-smooth-wheel.patch   # optional: the wheel glides
 ninja -C build && sudo ninja -C build install    # undo: sudo ninja -C build uninstall
 pkill -x swaync; swaync &                         # restarting clears current notifications
 ```
 
 Shoji's swaync theme styles the stacks (an opaque fill for collapsed cards, so the ones behind
-do not show through).
+do not show through). The optional patch makes the mouse wheel glide through the list (ease-out,
+180 ms per notch, quick notches add up) instead of jumping; touchpads keep GTK's own scrolling.
 
 ### Uninstall
 

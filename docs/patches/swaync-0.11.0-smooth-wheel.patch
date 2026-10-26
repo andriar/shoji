@@ -1,0 +1,76 @@
+--- a/src/controlCenter/controlCenter.vala
++++ b/src/controlCenter/controlCenter.vala
+@@ -55,6 +55,8 @@
+             viewport.set_vexpand (true);
+             viewport.set_shadow_type (Gtk.ShadowType.NONE);
+             scrolled_window.add (viewport);
++            // Shoji: a mouse wheel glides instead of jumping (touchpads keep GTK's own scrolling)
++            scrolled_window.scroll_event.connect (wheel_glide);
+ 
+             list_box.set_visible (true);
+             list_box.set_valign (Gtk.Align.END);
+@@ -216,6 +218,64 @@
+             notification_fade_animation.start (fade_animation_progress, to);
+         }
+ 
++        // Shoji: smooth mouse-wheel scrolling of the notification list. Each notch moves the
++        // target by WHEEL_STEP px; the list eases there over WHEEL_MS (ease-out cubic), and quick
++        // notches add up instead of restarting from where the list happens to be.
++        private const double WHEEL_STEP = 96;
++        private const double WHEEL_MS = 180;
++        private double wheel_from = 0;
++        private double wheel_target = 0;
++        private int64 wheel_start = 0;
++        private uint wheel_tick = 0;
++
++        private bool wheel_glide (Gdk.EventScroll ev) {
++            Gdk.Device ? dev = ev.get_source_device ();
++            if (dev != null && dev.get_source () == Gdk.InputSource.TOUCHPAD) {
++                return false;
++            }
++            double dy = 0;
++            if (ev.direction == Gdk.ScrollDirection.UP) {
++                dy = -1;
++            } else if (ev.direction == Gdk.ScrollDirection.DOWN) {
++                dy = 1;
++            } else if (ev.direction == Gdk.ScrollDirection.SMOOTH) {
++                double dx;
++                ev.get_scroll_deltas (out dx, out dy);
++            } else {
++                return false;
++            }
++            if (dy == 0) {
++                return false;
++            }
++            Gtk.Adjustment adj = scrolled_window.vadjustment;
++            double from_target = wheel_tick != 0 ? wheel_target : adj.value;
++            wheel_target = (from_target + dy * WHEEL_STEP).clamp (adj.lower, adj.upper - adj.page_size);
++            wheel_from = adj.value;
++            Gdk.FrameClock ? clock = scrolled_window.get_frame_clock ();
++            if (clock == null) {
++                adj.value = wheel_target;
++                return true;
++            }
++            wheel_start = clock.get_frame_time ();
++            if (wheel_tick == 0) {
++                wheel_tick = scrolled_window.add_tick_callback (wheel_frame);
++            }
++            return true;
++        }
++
++        private bool wheel_frame (Gtk.Widget widget, Gdk.FrameClock clock) {
++            double t = (clock.get_frame_time () - wheel_start) / (WHEEL_MS * 1000.0);
++            Gtk.Adjustment adj = scrolled_window.vadjustment;
++            if (t >= 1) {
++                adj.value = wheel_target;
++                wheel_tick = 0;
++                return false;
++            }
++            double eased = 1 - Math.pow (1 - t, 3);
++            adj.value = wheel_from + (wheel_target - wheel_from) * eased;
++            return true;
++        }
++
+         void scroll_animation_value_cb (double progress) {
+             this.scroll_animation_progress = progress;
+ 
