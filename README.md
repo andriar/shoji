@@ -43,7 +43,8 @@ means "you are here" or "this is on".
 - Readings appear only when they need you: cpu · mem from 70 %, indicators only while on.
 
 **Koyomi (暦), under the clock**
-- One container: the calendar, today's micro-season (七十二候, e.g. 霜始降 "first frost"), the day's
+- One container: the calendar, today's micro-season (七十二候, e.g. 霜始降 "first frost") and the
+  weather in one kanji (晴 曇 雨 雪 霧 雷, 月 on a clear night, from Open-Meteo), the day's
   events and due tasks (whatever GNOME Calendar shows, Google included), quick toggles that show
   their state, and notifications beside it.
 - Notifications stack per app like iOS; clicking one takes you to its window and workspace.
@@ -211,7 +212,8 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 | `shoji vscode` · `shoji spotify` · `shoji chrome` | turn on an app theme (once) |
 | `shoji greet` · `shoji season` · `shoji moon` | today's 候 and what is next · the season · redraw the moon |
 
-Preferences live in `~/.config/shoji/prefs.json`: `"seasonal"`, `"follow_sun"`, `"greet"` (one dim
+Preferences live in `~/.config/shoji/prefs.json`: `"seasonal"`, `"follow_sun"`, `"weather"` (`false`,
+or `{"place": "Kyoto"}`; default: the city of your time zone), `"greet"` (one dim
 line in new terminals), `"rin"` (false = no bell), `"numerals"` (`"kanji"` or `"arabic"`).
 
 ## Make your own palette

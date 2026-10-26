@@ -26,6 +26,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 import cairo
@@ -649,6 +651,78 @@ class Agenda:
         return {i["day"] for items in self.items.values() for i in items}
 
 
+class Weather:
+    """天気 for Koyomi, one kanji: 晴 clear (月 on a clear night), 曇 cloudy, 霧 fog, 雨 rain, 雪 snow,
+    雷 thunder, plus the temperature. Open-Meteo (no key), every 30 minutes, in a thread. The place
+    is the city of the system time zone (Asia/Jakarta → Jakarta), never your exact location; prefs
+    "weather": {"place": "Bandung"} or {"lat": .., "lon": ..} picks another, false turns it off."""
+    CACHE = HOME / ".cache/shoji/weather.json"
+    CODES = [((0, 1), "晴", "Clear"), ((2, 3), "曇", "Cloudy"), ((45, 48), "霧", "Fog"),
+             ((51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82), "雨", "Rain"),
+             ((71, 73, 75, 77, 85, 86), "雪", "Snow"), ((95, 96, 99), "雷", "Thunder")]
+
+    def __init__(self, on_update):
+        self.on_update = on_update
+        if prefs().get("weather", True) is False:
+            return
+        self.refresh()
+        GLib.timeout_add_seconds(1800, self.refresh)
+
+    def refresh(self):
+        threading.Thread(target=self.fetch, daemon=True).start()
+        return True
+
+    @staticmethod
+    def get(url):
+        with urllib.request.urlopen(url, timeout=6) as r:
+            return json.loads(r.read())
+
+    def place(self):
+        want = prefs().get("weather")
+        want = want if isinstance(want, dict) else {}
+        if "lat" in want and "lon" in want:
+            return want["lat"], want["lon"], want.get("place", "")
+        name = want.get("place")
+        if not name:
+            try:
+                zone = Path("/etc/timezone").read_text().strip()
+            except OSError:
+                zone = os.path.realpath("/etc/localtime").partition("zoneinfo/")[2]
+            name = zone.rsplit("/", 1)[-1].replace("_", " ")
+        old = self.read() or {}
+        if old.get("place") == name and "lat" in old:
+            return old["lat"], old["lon"], name
+        hit = self.get("https://geocoding-api.open-meteo.com/v1/search?count=1&name=" + urllib.parse.quote(name))
+        r = hit["results"][0]
+        return r["latitude"], r["longitude"], name
+
+    def fetch(self):
+        try:
+            lat, lon, name = self.place()
+            cur = self.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
+                           "&current=temperature_2m,weather_code,is_day&timezone=auto")["current"]
+        except (OSError, ValueError, KeyError, IndexError):
+            return
+        kanji, text = next(((k, t) for codes, k, t in self.CODES if cur["weather_code"] in codes), ("曇", "Cloudy"))
+        if kanji == "晴" and not cur.get("is_day", 1):
+            kanji, text = "月", "Clear night"
+        data = {"kanji": kanji, "text": text, "temp": round(cur["temperature_2m"]), "place": name,
+                "lat": lat, "lon": lon, "at": time.time()}
+        self.CACHE.parent.mkdir(parents=True, exist_ok=True)
+        self.CACHE.write_text(json.dumps(data, ensure_ascii=False))
+        GLib.idle_add(self.on_update)
+
+    @classmethod
+    def read(cls, fresh_s=None):
+        try:
+            data = json.loads(cls.CACHE.read_text())
+        except (OSError, ValueError):
+            return None
+        if fresh_s and time.time() - data.get("at", 0) > fresh_s:
+            return None
+        return data
+
+
 class TodayCache:
     """Today's agenda in ~/.cache/shoji/today.json every 15 minutes, for `shoji greet` (a shell must
     not wait on Evolution Data Server)."""
@@ -763,6 +837,7 @@ class Calendar:
         box.show_all()
         self.view = datetime.date.today().replace(day=1)
         self.selected = datetime.date.today()
+        self.weather = Weather(lambda: self.win.get_visible() and self.paint_header())
 
     def shift(self, step):
         y, m = self.view.year, self.view.month + step
@@ -961,9 +1036,7 @@ class Calendar:
         self.view = today.replace(day=1)
         self.weekday.set_text(f"{today.strftime('%A')} · {WEEK_K[(today.weekday() + 1) % 7]}曜日")
         self.date.set_text(today.strftime("%-d %B"))
-        kanji, english = micro_season(today)
-        self.yw.set_text(kanji)
-        self.yw.set_tooltip_text(f"{english} · {today.year} · w{today.isocalendar()[1]}")
+        self.paint_header()
         self.selected = today
         self.load()
         self.refresh_toggles()
@@ -973,6 +1046,19 @@ class Calendar:
 
     def hide(self):
         self.win.hide()
+
+    def paint_header(self):
+        """The 候 of today, then the weather when it is fresh (under two hours old)."""
+        today = datetime.date.today()
+        kanji, english = micro_season(today)
+        tip = f"{english} · {today.year} · w{today.isocalendar()[1]}"
+        w = Weather.read(fresh_s=7200)
+        if w:
+            kanji += f" · {w['kanji']} {w['temp']}°"
+            tip = f"{english} · {w['text']} {w['temp']}°C in {w['place']} · {today.year} · w{today.isocalendar()[1]}"
+        self.yw.set_text(kanji)
+        self.yw.set_tooltip_text(tip)
+        return False
 
     @staticmethod
     def focused_width():
