@@ -36,7 +36,10 @@ hl.layer_rule({ name = "shoji-blur",
 hl.layer_rule({ name = "shoji-osd", match = { namespace = "^hypr-osd$" }, animation = "popin 90%" })
 hl.layer_rule({ name = "shoji-zazen", match = { namespace = "^hypr-zazen$" }, animation = "fade" })
 hl.layer_rule({ name = "shoji-pop", match = { namespace = "^hypr-pop$" }, animation = "popin 96%" })
-hl.layer_rule({ name = "shoji-cal", match = { namespace = "^hypr-calendar$" }, animation = "slide top" })
+-- Koyomi's two halves fade together: swaync's layer covers the screen (it catches outside clicks),
+-- so a slide would move it ~1400 px against the calendar's ~480 px and they would arrive apart
+hl.layer_rule({ name = "shoji-cal", match = { namespace = "^hypr-calendar$" }, animation = "fade" })
+hl.layer_rule({ name = "shoji-panel", match = { namespace = "^swaync-control-center$" }, animation = "fade" })
 -- toasts slide in through swaync CSS; Hyprland's layer animation stretches the stack when it resizes
 hl.layer_rule({ name = "shoji-toasts", match = { namespace = "^swaync-notification-window$" }, no_anim = true })
 
