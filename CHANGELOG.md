@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-10-26
+
+- Clipboard history popover (Super+Shift+V): search, copy back, delete an entry, clear all.
+- Alt+Tab as window cards with app icons, most recent first.
+- Your own palette from the Theme manager: a ground and an accent, contrast checked live.
+- 夕暮れ: the wallpaper's sky turns pink at dawn, gold before sunset, violet after.
+- The bar shows a Bluetooth device's battery when it drops to 20 %.
+- `shoji doctor --deps`: what is installed and what each missing piece adds.
+- One-line install with a checksum (bootstrap.sh), and a PKGBUILD for Arch.
+
 ## 0.3.2 — 2026-10-26
 
 - Reduced motion (Super+Shift+M) now stills everything: Hyprland, GTK, the bar's equalizer, swaync,

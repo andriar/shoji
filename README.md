@@ -89,6 +89,19 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
 
 ## Install
 
+**Quick install** (Ubuntu 24.04 tested): fetch the bootstrap of a release, check it, run it. It clones
+the release to `~/shoji` and runs the installer, which backs up everything it replaces.
+
+```sh
+curl -fsSLo /tmp/shoji-bootstrap.sh https://raw.githubusercontent.com/andriar/shoji/v0.4.0/bootstrap.sh
+echo "13981ca2810c99a31120c143f3d23400170a6377e36fff798a76cbd867eef6ef  /tmp/shoji-bootstrap.sh" | sha256sum -c \
+  && sh /tmp/shoji-bootstrap.sh            # optional: a palette name, e.g. sh /tmp/shoji-bootstrap.sh yoru
+```
+
+Then add the Hyprland lines (step 3 below). On Arch, `packaging/aur/PKGBUILD` builds a package that
+puts Shoji in `/usr/share/shoji` with a `shoji-setup` command (not on the AUR yet, and not yet tested
+on Arch). The steps below do the same by hand.
+
 ### 1. Dependencies
 
 Shoji needs Hyprland, waybar, swaync, fuzzel, hyprlock, PipeWire, NetworkManager, Python 3 with

@@ -1,0 +1,35 @@
+# Maintainer: andriar <3871359+andriar@users.noreply.github.com>
+# Shoji is a per-user theme: the package ships the repo to /usr/share/shoji and a `shoji-setup`
+# command that runs its installer for the current user (fonts, scripts and configs in $HOME).
+pkgname=shoji-hyprland
+pkgver=0.4.0
+pkgrel=1
+pkgdesc="A calm, Japanese-inspired desktop for Hyprland: one palette for bar, panels, lock screen, terminal and apps"
+arch=('any')
+url="https://github.com/andriar/shoji"
+license=('MIT')
+depends=('hyprland' 'waybar' 'swaync' 'fuzzel' 'hyprlock' 'wireplumber' 'libpulse' 'networkmanager'
+         'python-gobject' 'python-cairo' 'gtk3' 'gtk-layer-shell' 'papirus-icon-theme' 'curl' 'fontconfig')
+optdepends=('playerctl: now playing on the bar'
+            'evolution-data-server: Koyomi agenda, reminders, Silent in meetings'
+            'gnome-calendar: open a day from Koyomi'
+            'bluez-utils: Bluetooth popover and battery'
+            'grim: screenshots' 'slurp: screenshots of an area' 'wl-clipboard: copy screenshots'
+            'cliphist: clipboard history' 'wf-recorder: screen recording'
+            'awww: wallpaper with transitions' 'hyprpaper: wallpaper' 'swaybg: wallpaper'
+            'ghostty: terminal colours and hypr-term' 'starship: the prompt' 'thunar: file manager on paper'
+            'bat' 'git-delta' 'fzf' 'btop' 'qt6ct' 'brightnessctl: laptops' 'power-profiles-daemon: laptops')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/andriar/shoji/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')  # set with `updpkgsums` before publishing
+
+package() {
+  cd "shoji-$pkgver"
+  install -d "$pkgdir/usr/share/shoji"
+  cp -r bin generators widgets config docs install.sh uninstall.sh LICENSE README.md "$pkgdir/usr/share/shoji/"
+  install -Dm755 /dev/stdin "$pkgdir/usr/bin/shoji-setup" <<'SH'
+#!/bin/sh
+# Install Shoji for the current user from /usr/share/shoji (backs up what it replaces).
+exec /usr/share/shoji/install.sh "$@"
+SH
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
