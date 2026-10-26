@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """坐禅 Zazen: a focus session. Silences notifications, hides the bar, dims the windows you are not
 in, and hypr-widgets shows a small ensō at the top that closes as the time passes. At the end
-everything comes back and one notification says the session is done.
+everything comes back, one notification says how many came in meanwhile, and a 5-minute rest (休)
+follows with its own quieter ensō. Finished sessions are counted per day (Koyomi shows 座 ×N).
 
-  shoji-zazen toggle [MIN]   start (default 25 min), or stop a running session
-  shoji-zazen start [MIN] | stop | status
+  shoji-zazen toggle [MIN]   start (default 25 min), or stop a running session or rest
+  shoji-zazen start [MIN] | stop [--done] | status | today
 """
 import json
 import os
@@ -17,6 +18,8 @@ RUN = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
 STATE = RUN / "shoji-zazen.json"
 FIFO = RUN / "hypr-osd.fifo"   # hypr-widgets draws the ensō
 DEFAULT_MIN = 25
+REST_MIN = 5
+LOG = Path.home() / ".local/state/shoji-zazen.log"   # one line per finished session: date minutes
 
 
 def run(*cmd):
@@ -54,7 +57,8 @@ def start(minutes):
     if running():
         return
     state = {
-        "start": time.time(), "minutes": minutes,
+        "phase": "focus", "start": time.time(), "minutes": minutes,
+        "held_from": int(run("swaync-client", "-c") or 0),
         "dnd": run("swaync-client", "-D") == "true",
         "dim": hypr_option("decoration:dim_inactive"),
         "dim_strength": hypr_option("decoration:dim_strength"),
@@ -68,12 +72,29 @@ def start(minutes):
     tell_widgets("zazen\tstart")
 
 
+def rest():
+    STATE.write_text(json.dumps({"phase": "rest", "start": time.time(), "minutes": REST_MIN}))
+    tell_widgets("zazen\tstart")
+
+
+def today_count():
+    try:
+        day = time.strftime("%Y-%m-%d")
+        return sum(1 for line in LOG.read_text().splitlines() if line.startswith(day))
+    except OSError:
+        return 0
+
+
 def stop(done=False):
     state = running()
     if not state:
         return
     STATE.unlink(missing_ok=True)
     tell_widgets("zazen\tstop")
+    if state.get("phase") == "rest":
+        if done:
+            run("notify-send", "-a", "Zazen", "-u", "low", "休 · rest is over", "Super+Z when you are ready for the next one.")
+        return
     if not state.get("dnd"):
         run("swaync-client", "-df")
     dim = "true" if state.get("dim") else "false"
@@ -83,7 +104,14 @@ def stop(done=False):
         run("pkill", "-SIGUSR1", "-x", "waybar")
     minutes = round((time.time() - state["start"]) / 60)
     if done:
-        run("notify-send", "-a", "Zazen", "坐禅 · done", f"{state['minutes']} minutes of focus. Breathe, stretch, drink water.")
+        LOG.parent.mkdir(parents=True, exist_ok=True)
+        with LOG.open("a") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M')} {state['minutes']}\n")
+        held = max(0, int(run("swaync-client", "-c") or 0) - state.get("held_from", 0))
+        meanwhile = f"{held} notification{'s' * (held != 1)} came in meanwhile." if held else "Nothing came in meanwhile."
+        run("notify-send", "-a", "Zazen", f"坐禅 · done ({today_count()} today)",
+            f"{state['minutes']} minutes of focus. {meanwhile} Now {REST_MIN} minutes of rest: stand up, drink water.")
+        rest()
     elif minutes:
         run("notify-send", "-a", "Zazen", "-u", "low", "坐禅 · stopped", f"after {minutes} of {state['minutes']} minutes")
 
@@ -98,11 +126,13 @@ def main():
         start(minutes)
     elif cmd == "stop":
         stop(done="--done" in args)
+    elif cmd == "today":
+        print(today_count())
     elif cmd == "status":
         state = running()
         if state:
             left = state["minutes"] * 60 - (time.time() - state["start"])
-            print(f"zazen {max(0, round(left / 60))} min left of {state['minutes']}")
+            print(f"{state.get('phase', 'focus')} {max(0, round(left / 60))} min left of {state['minutes']}")
         else:
             print("off")
     else:

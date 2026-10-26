@@ -51,7 +51,8 @@ means "you are here" or "this is on".
 
 **Calm on purpose**
 - **Zazen** (Super+Z): 25 minutes of focus. Silent, no bar, other windows dimmed, an ensō closes
-  at the top; everything comes back at the end.
+  at the top. At the end everything comes back, you hear how many notifications waited, and a
+  5-minute rest (休) follows; Koyomi counts the day's sessions (座 ×3).
 - **Ensō** for volume, mic and brightness, shown even with Do Not Disturb on.
 - **Rin (鈴)**: a small synthesised temple bell for critical notifications only.
 - **Seasonal accent** (optional): 紅梅 spring, 青竹 summer, 紅葉 autumn, 白群 winter.

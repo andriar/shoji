@@ -514,9 +514,10 @@ class Zazen:
         cr.set_line_width(1)
         cr.stroke()
         total = self.state["minutes"] * 60
-        enso(cr, c, c, c - 9, 1 - max(0, self.left()) / total, rgba(t["accent"]), 3.2,
+        resting = self.state.get("phase") == "rest"  # the 休 after a session: quieter, no number
+        enso(cr, c, c, c - 9, 1 - max(0, self.left()) / total, rgba(t["muted"] if resting else t["accent"]), 3.2,
              track=rgba(t["text"], 0.10))
-        mins = max(0, math.ceil(self.left() / 60))
+        mins = "休" if resting else max(0, math.ceil(self.left() / 60))
         lay = PangoCairo.create_layout(cr)
         lay.set_markup(f'<span font_family="Kaisei Opti" weight="bold" size="12pt" foreground="{t["text"]}">{mins}</span>', -1)
         w, h = lay.get_pixel_size()
@@ -806,6 +807,8 @@ class Calendar:
             head = Gtk.Box(spacing=4)
             self.sel_label = label("", "label-small")
             head.pack_start(self.sel_label, True, True, 0)
+            self.zazen_count = label("", "label-small")  # 座 ×N: focus sessions finished today
+            head.pack_start(self.zazen_count, False, False, 6)
             if shutil.which("gnome-calendar"):
                 b = Gtk.Button(label=icon("external-link"))
                 b.get_style_context().add_class("nav")
@@ -919,6 +922,9 @@ class Calendar:
         d = self.selected
         near = {0: "today", 1: "tomorrow", -1: "yesterday"}.get((d - datetime.date.today()).days)
         self.sel_label.set_text((near or d.strftime("%a · %-d %b")).upper())
+        sat = self.zazen_today() if near == "today" else 0
+        self.zazen_count.set_text(f"座 ×{sat}" if sat else "")
+        self.zazen_count.set_tooltip_text(f"{sat} zazen session{'s' * (sat != 1)} today" if sat else None)
         fade, self.fade = self.fade, False
         if fade:  # a new day: write its agenda on the hidden page and crossfade to it
             self.rows = self.row_pages[1 - self.row_pages.index(self.rows)]
@@ -1046,6 +1052,15 @@ class Calendar:
 
     def hide(self):
         self.win.hide()
+
+    @staticmethod
+    def zazen_today():
+        try:
+            day = datetime.date.today().isoformat()
+            return sum(1 for line in (HOME / ".local/state/shoji-zazen.log").read_text().splitlines()
+                       if line.startswith(day))
+        except OSError:
+            return 0
 
     def paint_header(self):
         """The 候 of today, then the weather when it is fresh (under two hours old)."""
