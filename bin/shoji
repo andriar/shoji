@@ -1052,7 +1052,7 @@ def fuji_snow_and_shade(c, pts, sx, sy, dark, p, sky, ink, rnd):
     the light (the sun or moon is on the right) in shade, snow included."""
     import cairo
     top = min(y for _, y in pts)
-    foot = 565 * sy
+    foot = 470 * sy
     depth = {"winter": 0.42, "spring": 0.32, "autumn": 0.18, "summer": 0.05}[season()[0]] * (foot - top)
     line = top + depth
     cap = [(x, y) for x, y in pts if y < line]
@@ -1081,17 +1081,19 @@ def fuji_snow_and_shade(c, pts, sx, sy, dark, p, sky, ink, rnd):
     c.line_to(pts[-1][0], 2000)
     c.close_path()
     c.clip()
+    c.rectangle(-10, top - 10, 100000, foot - top + 10)   # the mountain only, not the plain below its foot
+    c.clip()
     for k in range(6):   # the shaded face, left of a line down from the summit; feathered, not a fold
         shift = (k - 2) * 14 * sx
         c.move_to(summit - 20 * sx + shift, top - 5)
         c.curve_to(summit - 40 * sx + shift, top + 80 * sy, summit - 150 * sx + shift, foot - 60 * sy,
-                   summit - 260 * sx + shift, foot + 20 * sy)
-        c.line_to(-10, foot + 20 * sy)
+                   summit - 260 * sx + shift, foot + 160 * sy)   # well below the hills in front: no edge shows
+        c.line_to(-10, foot + 160 * sy)
         c.line_to(-10, top - 5)
         c.close_path()
-        sh = cairo.LinearGradient(summit, 0, summit - 420 * sx, 0)
+        sh = cairo.LinearGradient(0, top, 0, foot)   # strongest under the summit, gone at the foot
         sh.add_color_stop_rgba(0, *cairo_rgb(ink, (0.20 if dark else 0.11) / 6))
-        sh.add_color_stop_rgba(1, *cairo_rgb(ink, 0.04 / 6))
+        sh.add_color_stop_rgba(1, *cairo_rgb(ink, 0))
         c.set_source(sh)
         c.fill()
     c.restore()
@@ -1124,7 +1126,7 @@ def render_wallpaper(name):
 
     # the sun on light palettes, its edge bled into the paper; on dark ones tonight's moon with
     # faint maria, in its real phase
-    cx, cy, r = w * 0.727, h * 0.333, w * 0.0656
+    cx, cy, r = w * 0.724, h * 0.276, w * 0.0656   # the golden spiral's eye
     if dark:
         draw_moon(c, cx, cy, r, moon_phase(), cairo_rgb(p["accent"], 0.92), cairo_rgb(p["accent"], 0.10))
         c.save()
@@ -1167,25 +1169,28 @@ def render_wallpaper(name):
             c.fill()
             c.restore()
 
-    FX, TOP, FOOT = 430, 250, 565   # Fuji: summit x, summit height, where its flanks meet the plain
+    # Fuji's summit where the golden lines cross (0.382 of the width, 0.382 of the height); its foot
+    # near the lower golden line, so the sky holds 0.618 of the frame. Height to width about 1 : 5,
+    # as the real one: it is a wide, gentle mountain.
+    FX, TOP, FOOT = 489, 275, 470
 
     def fuji(x):
         """A flat, slightly ragged crater top; concave flanks, steep near the top and long at the
         foot, the right one a little longer, with the small Hōei shoulder on it."""
         d = x - FX
-        if abs(d) < 26:
-            return TOP + 2.5 * math.sin(x / 4.0) * math.sin(x / 9.0)   # the crater rim
-        reach = 400 if d < 0 else 470
-        u = min(1.0, (abs(d) - 26) / reach)
-        y = TOP + (FOOT - TOP) * (1 - math.exp(-3.0 * u)) / (1 - math.exp(-3.0))
+        if abs(d) < 20:
+            return TOP + 1.8 * math.sin(x / 4.0) * math.sin(x / 9.0)   # the crater rim
+        reach = 460 if d < 0 else 500
+        u = min(1.0, (abs(d) - 20) / reach)
+        y = TOP + (FOOT - TOP) * (1 - math.exp(-2.4 * u)) / (1 - math.exp(-2.4))
         if d > 0:
-            y -= 9 * math.exp(-((u - 0.30) / 0.05) ** 2)
+            y -= 5 * math.exp(-((u - 0.30) / 0.05) ** 2)
         return y
     layers = [   # (ridge height at x, roughness, colour): far range, Fuji, middle, near
-        (lambda x: 470 + 18 * math.sin(x / 140), 20, mix(p["hills"][0], sky[1], 0.45)),
+        (lambda x: 448 + 10 * math.sin(x / 140), 14, mix(p["hills"][0], sky[1], 0.45)),
         (lambda x: min(fuji(x), FOOT), 2, mix(p["hills"][0], ink, 0.30 if dark else 0.10)),
-        (lambda x: 560 + 18 * math.sin(x / 95 + 1.3) + 10 * math.sin(x / 41), 16, p["hills"][1]),
-        (lambda x: 632 + 12 * math.sin(x / 120 + 0.4) + 7 * math.sin(x / 37), 10, p["hills"][2]),
+        (lambda x: 505 + 14 * math.sin(x / 95 + 1.3) + 8 * math.sin(x / 41), 14, p["hills"][1]),
+        (lambda x: 590 + 10 * math.sin(x / 120 + 0.4) + 6 * math.sin(x / 37), 10, p["hills"][2]),
     ]
     for i, (y_at, rough, col) in enumerate(layers):
         pts = [(x * sx, y * sy) for x, y in ink_ridge(rnd, -20, 1300, y_at, rough, 5)]
@@ -1217,7 +1222,7 @@ def render_wallpaper(name):
                     c.line_to(x, y + rnd.uniform(0, 2) * sy)
             c.stroke()
         if i == 3:   # three pines on the near ridge, leaning; foliage in flat pads reaching downwind
-            for px, tall, lean in ((1040, 78, 9), (1096, 58, 6), (1150, 44, 4)):
+            for px, tall, lean in ((800, 70, 8), (846, 52, 6), (888, 40, 4)):   # by the right golden line
                 py = min(y for x, y in pts if abs(x - px * sx) < 6 * sx) + 4 * sy
                 tall *= sy
                 pine = mix(col, ink, 0.5)
