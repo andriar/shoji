@@ -46,8 +46,10 @@ cfg = {
                      "on-click": "swaync-client -t -sw"},
     "custom/notification": {
         "format": "{icon}", "return-type": "json", "exec": "swaync-client -swb", "escape": True, "tooltip": False,
-        "format-icons": {"notification": "■", "dnd-notification": L("bell-off"), "inhibited-notification": "■",
-                         "dnd-inhibited-notification": L("bell-off"), "none": "", "inhibited-none": "",
+        # bell = nothing new, bell with a dot = unread, crossed bell = silent (do not disturb)
+        "format-icons": {"notification": L("bell-dot"), "dnd-notification": L("bell-off"),
+                         "inhibited-notification": L("bell-dot"), "dnd-inhibited-notification": L("bell-off"),
+                         "none": L("bell"), "inhibited-none": L("bell"),
                          "dnd-none": L("bell-off"), "dnd-inhibited-none": L("bell-off")},
         "on-click": "swaync-client -t -sw", "on-click-right": "swaync-client -d -sw",
     },
@@ -171,11 +173,8 @@ tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
 window#waybar.empty #window { background: transparent; }
 
 #custom-clock { padding: 0 10px; }
-#custom-notification { padding: 0 4px; margin-left: 0; font-size: 9px; color: @accent; }
-#custom-notification.dnd-notification, #custom-notification.dnd-none,
-#custom-notification.dnd-inhibited-notification, #custom-notification.dnd-inhibited-none {
-  font-size: 12px; color: @muted;
-}
+#custom-notification { padding: 0 6px; margin-left: 0; font-family: "lucide"; font-size: 13px; color: @muted; }
+#custom-notification.notification, #custom-notification.inhibited-notification { color: @accent; }
 
 #custom-media { padding: 0 10px 0 36px; font-size: 12px; color: @text; }
 #custom-media.paused { color: @muted; }

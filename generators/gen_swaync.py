@@ -1,19 +1,18 @@
-# Shoji Koyomi panel for swaync: config + style (glyphs via chr(), tooling strips private-use chars).
-# The calendar card beside it is drawn by hypr-widgets (same width and height, left of the centre
-# line); together they read as one pair under the clock.
+# Shoji Koyomi panel for swaync: config + style.
+# Koyomi (calendar, agenda, quick toggles) is drawn by hypr-widgets left of the screen's centre
+# line; this panel (notifications) starts at it, same height: one container under the clock.
 import json
 from pathlib import Path
 D = Path.home() / ".config/swaync"
-ICONS = json.loads((Path.home() / ".local/share/fonts/Shoji/lucide-info.json").read_text())
 
 
-PANEL_H = 474    # hypr-widgets calendar card with its agenda (fixed); the panel matches it
+PANEL_H = 479    # hypr-widgets Koyomi card (fixed); the panel matches it
 GAP = 8
 WIDTH = 420
 
 
 def screen_width():
-    """Logical width of the focused monitor: the panel sits just right of its centre line."""
+    """Logical width of the focused monitor: the panel starts at its centre line."""
     import subprocess
     try:
         mons = json.loads(subprocess.run(["hyprctl", "monitors", "-j"], capture_output=True, text=True).stdout)
@@ -21,23 +20,6 @@ def screen_width():
         return round(m["width"] / m.get("scale", 1))
     except Exception:
         return 2560
-close = "swaync-client -cp; sleep 0.3; "
-
-
-def L(name):
-    return chr(int(ICONS[name]["encodedCode"].lstrip("\\"), 16))
-
-
-def btn(icon, label, cmd):
-    return {"label": L(icon), "command": cmd}  # icon only: all eight fit one row ({label} names it here)
-
-
-def installed(action):
-    """Keep a button only if the program it runs exists (the package ships most, not all)."""
-    import shutil
-    prog = action["command"].replace(close, "").split()[0]
-    prog = str(Path(prog).expanduser())
-    return Path(prog).exists() or shutil.which(prog) is not None
 
 
 cfg = {
@@ -47,7 +29,7 @@ cfg = {
   "layer": "overlay", "control-center-layer": "top", "layer-shell": True,
   "cssPriority": "user",
   "control-center-margin-top": GAP, "control-center-margin-bottom": 8,
-  "control-center-margin-right": max(0, screen_width() // 2 - GAP // 2 - WIDTH), "control-center-margin-left": 0,
+  "control-center-margin-right": max(0, screen_width() // 2 - WIDTH), "control-center-margin-left": 0,
   "notification-2fa-action": True, "notification-inline-replies": False,
   "notification-icon-size": 28,
   "notification-body-image-height": 80, "notification-body-image-width": 160,
@@ -55,40 +37,21 @@ cfg = {
   "fit-to-screen": False,
   "control-center-width": WIDTH, "control-center-height": PANEL_H,  # same height as Koyomi; the list scrolls
   "notification-window-width": 360,
-  "keyboard-shortcuts": True, "image-visibility": "when-available",
+  # False: with True swaync grabs the keyboard exclusively, and Hyprland then sends clicks only to
+  # it, so Koyomi's buttons and days never got them (the click closed the panel instead)
+  "keyboard-shortcuts": False, "image-visibility": "when-available",
   "transition-time": 200, "hide-on-clear": False, "hide-on-action": True,
   "script-fail-notify": True,
   "notification-visibility": {
     "osd": {"state": "transient", "app-name": "^OSD$"},
   },
-  # no volume slider (volume keys, the bar ensō and the Sound popover cover it) and no media
-  # player (the bar's cover opens the Media popover)
-  "widgets": ["buttons-grid", "title", "notifications"],
+  # quick toggles live in Koyomi (they show their state there), volume on the bar ensō and the
+  # Sound popover, music on the bar and the Media popover: the panel is notifications only
+  "widgets": ["title", "notifications"],
   "widget-config": {
-    "buttons-grid": {
-      # GtkFlowBox puts at most 7 on a line: one row of icons. Shot, Record, Clipboard and Wallpaper
-      # have keys (Super+/ lists them); Lock is in the Power menu.
-      "actions": [
-        btn("wifi",        "Network",    close + "~/.local/bin/hypr-pop network"),
-        btn("bluetooth",   "Bluetooth",  close + "blueman-manager"),
-        btn("moon",        "Night",      "~/.local/bin/hypr-nightlight toggle"),
-        btn("bell-off",    "Silent",     "swaync-client -d -sw"),
-        btn("coffee",      "Awake",      "~/.local/bin/keep-awake toggle"),
-        btn("palette",     "Theme",      close + "~/.local/bin/hypr-pop theme"),
-        btn("power",       "Power",      close + "wlogout -b 4 -p layer-shell"),
-      ],
-    },
-    "volume": {
-      "label": L("volume-2"), "show-per-app": True,
-      "expand-button-label": L("chevron-down"), "collapse-button-label": L("chevron-up"),
-      "empty-list-label": "No app is playing sound",
-    },
-    "mpris": {"image-size": 36, "image-radius": 8},
     "title": {"text": "Notifications", "clear-all-button": True, "button-text": "Clear"},
   },
 }
-grid = cfg["widget-config"]["buttons-grid"]
-grid["actions"] = [a for a in grid["actions"] if installed(a)]
 # Your own rules, kept out of this file: ~/.config/shoji/swaync-local.json
 #   {"notification-visibility": {"bots": {"state": "transient", "summary": "^New message in #deploy"}}}
 # transient = shown as a toast, not kept in the panel
@@ -111,7 +74,7 @@ css = r'''/* Shoji Koyomi panel + notifications (generated by ~/.config/shoji/ge
 .control-center {
   background: @elev2;
   border: 1px solid @edge;
-  border-radius: 16px;
+  border-radius: 0 16px 16px 0;  /* the right half of the Koyomi container */
   padding: 8px 6px;
   color: @text;
 }
@@ -132,48 +95,6 @@ css = r'''/* Shoji Koyomi panel + notifications (generated by ~/.config/shoji/ge
   font-size: 14px;
 }
 .widget-menubar button:hover { background: @hover; }
-/* toggles: one row of icon chips */
-.widget-buttons-grid { background: transparent; padding: 2px 4px 4px; }
-.widget-buttons-grid > flowbox > flowboxchild { min-width: 0; padding: 0; margin: 0; }
-.widget-buttons-grid > flowbox > flowboxchild > button {
-  background: @group;
-  color: @text;
-  border: none;
-  border-radius: 8px;
-  min-width: 40px;
-  min-height: 36px;
-  padding: 0;
-  margin: 2px;
-}
-.widget-buttons-grid > flowbox > flowboxchild > button label { font-family: "lucide"; font-size: 15px; }
-.widget-buttons-grid > flowbox > flowboxchild > button:hover { background: @hover; }
-.widget-buttons-grid > flowbox > flowboxchild > button:focus { box-shadow: inset 0 0 0 1px @edge; }
-.widget-buttons-grid > flowbox > flowboxchild > button:checked { background: @accent; color: @on_accent; } /* swaync >= 0.10 */
-.widget-volume, .widget-mpris {
-  background: @group;
-  border-radius: 12px;
-  padding: 6px 10px;
-  margin: 3px 8px;
-}
-.widget-mpris { padding: 8px 10px 2px; }
-.widget-volume label { color: @text; font-size: 14px; }
-.widget-volume button { background: transparent; border: none; color: @muted; }
-.widget-volume button:hover { background: @hover; border-radius: 8px; }
-.per-app-volume { background: transparent; margin-top: 6px; }
-.per-app-volume label { font-size: 12px; color: @muted; }
-.widget-mpris-player { background: transparent; padding: 0; margin: 0; }
-/* the page dots under a single player only reserve space: pull the card up over it */
-.widget-mpris carouselindicatordots { margin: -30px 0 0; min-height: 0; padding: 0; opacity: 0; }
-.widget-buttons-grid button, .widget-mpris button { outline: none; }
-.widget-mpris image { border-radius: 8px; }
-.widget-mpris button { min-width: 28px; min-height: 28px; padding: 0; }
-.widget-mpris-title { font-size: 13px; font-weight: 700; color: @text; }
-.widget-mpris-subtitle { font-size: 12px; color: @muted; }
-.widget-mpris button { background: transparent; border: none; color: @text; border-radius: 14px; }
-.widget-mpris button:hover { background: @hover; }
-scale trough { min-height: 4px; border-radius: 2px; background: @track; }
-scale highlight { min-height: 4px; border-radius: 2px; background: @accent; }
-scale slider { min-width: 14px; min-height: 14px; margin: -5px; border-radius: 7px; background: @text; }
 .widget-title { margin: 10px 8px 2px; }
 .widget-title > label { font-size: 13px; font-weight: 700; color: @text; }
 .widget-title > button {
