@@ -253,6 +253,7 @@ class Meetings:
         self.reminded = set()
         self.card = ReminderCard()
         self.shimai = Shimai(today, self)
+        self.batch = Batch()
         GLib.timeout_add_seconds(30, self.tick)
         GLib.timeout_add_seconds(5, lambda: (self.tick(), False)[1])  # once the agenda has loaded
 
@@ -263,6 +264,8 @@ class Meetings:
         self.set("meeting", any(i["when"] <= hm < i["end"] for i in timed))
         self.set("shimai", self.shimai.resting())
         self.shimai.tick(now)
+        self.set("batch", bool(self.batch.minutes()))
+        self.batch.tick(now)
         for i in timed:
             key = (i["uid"], i["when"])
             if hm < i["when"] <= soon and key not in self.reminded:
@@ -289,6 +292,74 @@ class Meetings:
             if held:
                 spawn("notify-send", "-a", "Shoji", "-u", "low", "静 · Silent is off again",
                       f"{held} notification{'s' * (held != 1)} waited while you were busy.")
+
+
+class Batch(ReminderCard):
+    """通 Notifications in batches (prefs "batch": 30 or 60 minutes): Silent stays on (a Meetings
+    reason) while shoji-batch notes what comes in; at each half hour or hour one card says what
+    waited, by app. Critical notifications come through at once (swaync lets them past Silent)."""
+    LOG = RUN / "shoji-batch.log"
+
+    def __init__(self):
+        super().__init__()
+        self.slot = None
+
+    @staticmethod
+    def minutes():
+        return int(prefs().get("batch") or 0)
+
+    def waiting(self):
+        try:
+            apps = [line.split("\t", 1)[1] for line in self.LOG.read_text().splitlines() if "\t" in line]
+        except OSError:
+            return {}
+        out = {}
+        for a in apps:
+            out[a or "?"] = out.get(a or "?", 0) + 1
+        return dict(sorted(out.items(), key=lambda kv: -kv[1]))
+
+    def tick(self, now):
+        every = self.minutes()
+        if not every:
+            return
+        slot = (now.hour * 60 + now.minute) // every
+        if self.slot is None:   # started (or restarted) mid-slot: deliver at the next one
+            self.slot = slot
+        if slot == self.slot:
+            return
+        self.slot = slot
+        apps = self.waiting()
+        self.LOG.write_text("")
+        if apps:
+            self.show_digest(apps)
+
+    def show_digest(self, apps):
+        load_css()
+        for c in self.box.get_children():
+            self.box.remove(c)
+        n = sum(apps.values())
+        self.box.pack_start(label(T("通 · WHAT CAME IN"), "label-small"), False, False, 0)
+        self.box.pack_start(label(T("{n} notifications waited").format(n=n), "title"), False, False, 0)
+        names = label(" · ".join(f"{a} {c}" for a, c in list(apps.items())[:4]), "muted")
+        names.set_ellipsize(Pango.EllipsizeMode.END)
+        self.box.pack_start(names, False, False, 0)
+        row = Gtk.Box(spacing=6)
+        see = Gtk.Button(label=T("Open the panel"))
+        for c in ("chip", "on"):
+            see.get_style_context().add_class(c)
+        see.connect("clicked", lambda *_: (spawn("swaync-client", "-op"), self.hide()))
+        row.pack_start(see, False, False, 0)
+        later = Gtk.Button(label=T("Later"))
+        later.get_style_context().add_class("chip")
+        later.connect("clicked", lambda *_: self.hide())
+        row.pack_end(later, False, False, 0)
+        self.box.pack_start(row, False, False, 2)
+        self.box.show_all()
+        self.win.resize(1, 1)
+        self.win.show_all()
+        if self.timer:
+            GLib.source_remove(self.timer)
+        self.timer = GLib.timeout_add_seconds(10 * 60, self.hide)
 
 
 class Shimai(ReminderCard):

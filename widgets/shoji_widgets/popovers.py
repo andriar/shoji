@@ -1575,6 +1575,7 @@ class Preferences(Popover):
         ("lang", "Language", [("en", "English"), ("id", "Indonesia"), ("ja", "日本語")], "en"),
         ("numerals", "Workspace numbers", [("kanji", "一二三"), ("arabic", "123")], "kanji"),
         ("shimai", "End of the day", [("", "Off"), ("17:00", "17:00"), ("18:00", "18:00")], "17:00"),
+        ("batch", "Notifications", [(0, "As they come"), (30, "Every 30 min"), (60, "Hourly")], 0),
     ]
 
     def __init__(self, manager):
@@ -1615,14 +1616,23 @@ class Preferences(Popover):
             self.box.pack_start(line, False, False, 3)
         self.box.pack_start(label(T("Kept in ~/.config/shoji/prefs.json"), "mono"), False, False, 2)
 
+    SWAYNC_KEYS = ("rin", "batch")   # read when swaync's config is written: write it again
+
     def flip(self, key, on):
         if key == "reduced_motion":   # hypr-motion saves it and tells every part of the desktop
             spawn(str(HOME / ".local/bin/hypr-motion"), "on" if on else "off")
         else:
             save_prefs(**{key: on})
+            self.swaync_again(key)
+
+    def swaync_again(self, key):
+        if key in self.SWAYNC_KEYS:
+            subprocess.run([sys.executable, str(HOME / ".config/shoji/gen_swaync.py")], stdout=subprocess.DEVNULL)
+            sh("swaync-client", "-R")
 
     def choose(self, key, value):
         save_prefs(**{key: value})
+        self.swaync_again(key)
         if key == "numerals":
             subprocess.run([sys.executable, str(HOME / ".config/shoji/gen_waybar.py")], stdout=subprocess.DEVNULL)
             sh("pkill", "-SIGUSR2", "-x", "waybar")

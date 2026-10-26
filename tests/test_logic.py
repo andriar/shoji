@@ -109,6 +109,7 @@ class Meetings(unittest.TestCase):
         m.reasons, m.ours, m.held_from, m.reminded = set(), False, 0, set()
         m.card = type("C", (), {"show": lambda _s, i: shown.append(i["title"])})()
         m.shimai = type("S", (), {"resting": lambda _s: False, "tick": lambda _s, now: None})()
+        m.batch = type("B", (), {"minutes": lambda _s: 0, "tick": lambda _s, now: None})()
         return m, shown
 
     def test_silent_during_an_event_and_one_reminder(self):
@@ -332,6 +333,30 @@ class Shimai(unittest.TestCase):
         self.assertTrue(s.resting())
         s.STATE.write_text(json.dumps({"until": time.time() - 1}))
         self.assertFalse(s.resting())
+
+
+class Batch(unittest.TestCase):
+    def test_note_skips_critical_and_the_card_comes_once_a_slot(self):
+        import os
+        import subprocess
+        from unittest import mock
+        from shoji_widgets import overlays
+        run = Path(tempfile.mkdtemp())
+        for app, urgency in (("Slack", "Normal"), ("Slack", "Low"), ("Mail", "Normal"), ("Pager", "Critical")):
+            subprocess.run([str(REPO / "bin/shoji-batch"), "note"], check=True, env={
+                **os.environ, "XDG_RUNTIME_DIR": str(run), "SWAYNC_APP_NAME": app, "SWAYNC_URGENCY": urgency})
+        b = object.__new__(overlays.Batch)
+        b.LOG, b.slot = run / "shoji-batch.log", None
+        self.assertEqual(b.waiting(), {"Slack": 2, "Mail": 1})
+        b.show_digest = mock.Mock()
+        with mock.patch.object(overlays, "prefs", return_value={"batch": 30}):
+            b.tick(datetime.datetime(2026, 10, 26, 10, 10))   # mid-slot start: nothing yet
+            b.tick(datetime.datetime(2026, 10, 26, 10, 29))
+            b.show_digest.assert_not_called()
+            b.tick(datetime.datetime(2026, 10, 26, 10, 30))
+            b.tick(datetime.datetime(2026, 10, 26, 10, 31))
+        b.show_digest.assert_called_once_with({"Slack": 2, "Mail": 1})
+        self.assertEqual(b.waiting(), {})
 
 
 if __name__ == "__main__":
