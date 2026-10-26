@@ -139,6 +139,46 @@ STRINGS = {  # English text -> (Indonesian, Japanese)
          "季節のアクセント：紅梅 春 · 青竹 夏 · 紅葉 秋 · 白群 冬（今は {s}）"),
     "Same from a terminal: {cmd}": ("Dari terminal: {cmd}", "ターミナルから：{cmd}"),
     "↑↓ move · ↵ run it · Esc": ("↑↓ pindah · ↵ jalankan · Esc", "↑↓ 移動 · ↵ 実行 · Esc"),
+    "Homelab": ("Homelab", "ホームラボ"), "Refresh": ("Muat ulang", "更新"),
+    "Not set up yet: run {cmd}": ("Belum diatur: jalankan {cmd}", "未設定：{cmd} を実行"),
+    "all well": ("semua sehat", "すべて正常"), "{n} down": ("{n} mati", "{n} 件停止"),
+    "updated {t} ago": ("diperbarui {t} lalu", "{t} 前に更新"),
+    "CONTAINERS": ("KONTAINER", "コンテナ"), "SERVICES": ("LAYANAN", "サービス"), "PUBLIC": ("PUBLIK", "公開"),
+    "HOST": ("HOST", "ホスト"), "BACKUPS": ("CADANGAN", "バックアップ"),
+    "Restart": ("Mulai ulang", "再起動"), "Stop": ("Hentikan", "停止"), "Start": ("Jalankan", "開始"),
+    "Logs": ("Log", "ログ"), "Run now": ("Jalankan sekarang", "今すぐ実行"),
+    "Restart all": ("Mulai ulang semua", "すべて再起動"), "Stop all": ("Hentikan semua", "すべて停止"),
+    "Start all": ("Jalankan semua", "すべて開始"),
+    "Edit config…": ("Ubah konfigurasi…", "設定を編集…"), "working…": ("memproses…", "処理中…"),
+    "NEEDS YOU": ("PERLU DICEK", "要対応"),
+    "Widgets": ("Widget", "ウィジェット"), "Done": ("Selesai", "完了"), "Edit widgets": ("Ubah widget", "ウィジェットを編集"),
+    "No widgets: ✎ to add some": ("Belum ada widget: ✎ untuk menambah", "ウィジェットなし：✎ で追加"),
+    "HIDDEN": ("TERSEMBUNYI", "非表示"), "Show": ("Tampilkan", "表示"), "Hide": ("Sembunyikan", "隠す"),
+    "Move earlier": ("Geser ke depan", "前へ移動"), "Move later": ("Geser ke belakang", "後ろへ移動"),
+    "Open {what}": ("Buka {what}", "{what} を開く"), "Start 25 min of focus": ("Mulai fokus 25 menit", "25 分集中する"),
+    "{m} min today": ("{m} menit hari ini", "今日 {m} 分"), "Copy again": ("Salin lagi", "もう一度コピー"),
+    "Image · {kind}": ("Gambar · {kind}", "画像 · {kind}"),
+    "connecting…": ("menghubungkan…", "接続中…"), "done": ("selesai", "完了"), "failed": ("gagal", "失敗"),
+    "click again to confirm": ("klik lagi untuk yakin", "もう一度クリックで実行"), "ATTENTION": ("PERHATIAN", "要確認"),
+    "Click where it goes, or Esc": ("Klik tempat tujuannya, atau Esc", "置きたい場所をクリック、または Esc"),
+    "Drag to move · S M L to resize": ("Seret untuk memindah · S M L untuk ukuran", "ドラッグで移動 · S M L でサイズ"),
+    "Small": ("Kecil", "小"), "Wide": ("Lebar", "横長"), "Large": ("Besar", "大"),
+    "REST · {m} MIN": ("ISTIRAHAT · {m} MENIT", "休憩 · {m} 分"), "Another": ("Yang lain", "別のもの"),
+    "Skip rest": ("Lewati istirahat", "休憩をやめる"), "I did it": ("Sudah kulakukan", "やりました"),
+    "Something else": ("Saran lain", "ほかの提案"), "End the rest now": ("Akhiri istirahat sekarang", "休憩を終える"),
+    "breathe in": ("tarik napas", "吸う"), "hold": ("tahan", "止める"), "breathe out": ("buang napas", "吐く"),
+    "Dim the screen in a rest": ("Redupkan layar saat istirahat", "休憩中は画面を暗く"),
+    "After zazen, one thing to do away from the screen, over a dimmed desktop":
+        ("Setelah zazen, satu hal untuk dilakukan jauh dari layar, di atas desktop yang diredupkan",
+         "坐禅のあと、画面から離れてすることをひとつ、暗くしたデスクトップの上に"),
+    "Zazen: focus · rest": ("Zazen: fokus · istirahat", "坐禅：集中・休憩"), "Every 4th rest": ("Tiap istirahat ke-4", "4 回ごとの休憩"),
+    "Same": ("Sama", "同じ"), "15 min": ("15 menit", "15 分"), "20 min": ("20 menit", "20 分"),
+    "{n} rests taken": ("{n} istirahat diambil", "休憩 {n} 回"),
+    "checked {t} ago": ("dicek {t} lalu", "{t} 前に確認"), "No focus yet today": ("Belum fokus hari ini", "今日はまだ集中なし"),
+    "Expected: stop watching it": ("Memang dimatikan: jangan pantau", "停止は想定内：監視しない"), "disconnecting…": ("memutus…", "切断中…"),
+    "could not connect": ("gagal terhubung", "接続できません"), "could not disconnect": ("gagal memutus", "切断できません"),
+    "CONNECTED": ("TERHUBUNG", "接続中"), "{n} on": ("{n} aktif", "{n} 件オン"),
+    "Focus": ("Fokus", "集中"), "Clipboard": ("Clipboard", "クリップボード"), "Machine": ("Mesin", "マシン"),
 }
 LANGS = {"en": "English", "id": "Indonesia", "ja": "日本語"}
 ID_MONTHS = "Januari Februari Maret April Mei Juni Juli Agustus September Oktober November Desember".split()
@@ -305,6 +345,7 @@ button.day:not(.today):hover { background: @hover; }
         color: @text; font-size: 10.5px; min-height: 22px; }
 .chip:hover { background: @hover; }
 .chip.on { background: @accent; color: @on_accent; }
+.chip.armed { background: alpha(@warn, 0.28); color: @text; }   /* "click again" for an action on many */
 .link { background: transparent; border: none; box-shadow: none; color: @muted; padding: 2px 10px;
         border-radius: 8px; min-height: 26px; }
 .link:hover { background: @hover; color: @text; }
@@ -377,6 +418,65 @@ list { background: transparent; }
 .sheet-row:disabled { opacity: 1; }
 .sheet-row .desc { font-size: 12px; color: @text; }
 .sheet-row .cap { font-size: 10.5px; padding: 1px 5px; border: none; }
+/* Homelab: healthy is muted, never green; the accent is not used at all */
+.hl-line { border-radius: 8px; }
+.hl-line.hot { background: @hover; }
+.hl-main { background: transparent; background-image: none; border: none; box-shadow: none; border-radius: 8px;
+           padding: 0 10px; min-height: 30px; }
+.hl-line.sub .hl-main { padding-left: 26px; min-height: 28px; }
+.hl-line .name { color: @muted; }
+.hl-line.hot .name, .hl-line.bad .name, .hl-line.warn .name, .hl-line.accent .name { color: @text; }
+.hl-line .meta { color: @muted; }
+.hl-line.bad .meta, .hl-line .meta.bad { color: @alert; }
+.hl-line.warn .meta, .hl-line .meta.warn { color: @warn; }
+.hl-line.accent .meta { color: @accent_text; }
+.hl-line .icon { font-family: "lucide"; font-size: 12px; color: @muted; }
+.hl-dot { min-width: 6px; min-height: 6px; border-radius: 3px; background: alpha(@muted, 0.5); }
+.hl-dot.warn { background: @warn; }
+.hl-dot.bad { background: @alert; }
+.hl-dot.accent { background: @accent; }   /* waits for you (unread-like); red stays for trouble */
+.hl-act { background: transparent; background-image: none; border: none; box-shadow: none; border-radius: 6px;
+          min-width: 26px; min-height: 26px; padding: 0; color: alpha(@muted, 0.75); }   /* 3:1 on light palettes too */
+.hl-line.hot .hl-act, .hl-line.bad .hl-act, .hl-line.warn .hl-act, .hl-line.accent .hl-act { color: @muted; }
+/* the keyboard's place: a ring on whatever has focus in a list or the drawer */
+.hl-main:focus, .hl-act:focus, .chip:focus, .link:focus, .dcard.focus { box-shadow: inset 0 0 0 1px alpha(@accent, 0.85); }
+.hl-act:hover { background: @hover; color: @text; }
+.hl-act.on { color: @accent; }
+.vpn-row { padding: 0 10px; min-height: 34px; }
+.vpn-row .icon { font-family: "lucide"; font-size: 14px; color: @muted; }
+.vpn-row .icon.on { color: @text; }   /* the mode that is on (you are here) */
+.hl-act label { font-family: "lucide"; font-size: 12px; }
+.hl-section { padding: 14px 10px 4px; }
+.hl-section.first { padding-top: 4px; }
+.hl-summary.bad { color: @alert; }
+/* drawer cards: quiet when well, the icon and the number take the colour of trouble */
+.dcard { background: @group; border-radius: 12px; padding: 10px 12px; }
+.dcard.opens.hot { background: @hover; }   /* only a card that opens something lights up */
+.dcard.compact { padding: 8px 12px; }
+/* edit mode: cards look movable; the one picked or being dragged, and where it would land */
+.dcard.editing { box-shadow: inset 0 0 0 1px alpha(@text, 0.16); }
+.dcard.picked, .dcard.dragging { box-shadow: inset 0 0 0 2px @accent; opacity: 0.7; }
+.dcard.drop-before { box-shadow: inset 3px 0 0 0 @accent; }
+.dcard.drop-after { box-shadow: inset -3px 0 0 0 @accent; }
+.size-chip { background: @group; background-image: none; border: none; box-shadow: none; border-radius: 6px;
+             min-width: 22px; min-height: 20px; padding: 0 4px; font-size: 10.5px; color: @muted; }
+.size-chip:hover { background: @hover; color: @text; }
+.size-chip.on { background: @accent; color: @on_accent; }
+/* the rest card */
+.rest-card { padding: 20px 22px; }
+.rest-title { font-family: "Kaisei Opti"; font-weight: 700; font-size: 22px; color: @text; }
+.rest-how { font-size: 13px; color: mix(@muted, @text, 0.35); }
+.dcard .dc-icon, .dc-icon { font-family: "lucide"; font-size: 13px; color: @muted; }
+.dcard.warn .dc-icon, .dcard.warn .dc-big { color: @warn; }
+.dcard.bad .dc-icon, .dcard.bad .dc-big { color: @alert; }
+.dcard.accent .dc-icon, .dcard.accent .dc-big { color: @accent; }   /* waits for you, like unread */
+.dc-big { font-family: "Kaisei Opti"; font-weight: 700; font-size: 24px; color: @text; }
+.dc-title { font-size: 12.5px; font-weight: 700; color: @text; }
+.dc-line { font-size: 11.5px; color: mix(@muted, @text, 0.35); }   /* 4.5:1 on hiru / yuki cards */
+.dc-line.strong { color: @text; }
+.dc-line.warn { color: @warn; }
+.dc-line.bad { color: @alert; }
+.hl-stale { color: @warn; }
 """
 
 provider = Gtk.CssProvider()

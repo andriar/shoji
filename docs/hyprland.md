@@ -31,11 +31,12 @@ hl.config({ general = { border_size = 1,
 
 -- glass behind every shell surface
 hl.layer_rule({ name = "shoji-blur",
-    match = { namespace = "^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-card)$" },
+    match = { namespace = "^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-card|hypr-drawer)$" },
     blur = true, ignore_alpha = 0.2 })
 hl.layer_rule({ name = "shoji-osd", match = { namespace = "^hypr-osd$" }, animation = "popin 90%" })
 hl.layer_rule({ name = "shoji-zazen", match = { namespace = "^hypr-zazen$" }, animation = "fade" })
 hl.layer_rule({ name = "shoji-card", match = { namespace = "^hypr-card$" }, animation = "slide right" })
+hl.layer_rule({ name = "shoji-drawer", match = { namespace = "^hypr-drawer$" }, animation = "slide right" })
 hl.layer_rule({ name = "shoji-pop", match = { namespace = "^hypr-pop$" }, animation = "popin 96%" })
 -- Koyomi's two halves fade together: swaync's layer covers the screen (it catches outside clicks),
 -- so a slide would move it ~1400 px against the calendar's ~480 px and they would arrive apart
@@ -141,3 +142,14 @@ stand still. It uses under a tenth of one CPU core while it shows (8 frames a se
 
 `~/.config/gtk-*` is shared with GNOME. If you also log into GNOME, add an autostart entry that runs
 `~/.local/bin/shoji gnome` (OnlyShowIn=GNOME) so GNOME gets its own look back.
+
+## The widgets drawer
+
+```lua
+-- Super+grave, and a four-finger swipe from the right on a touchpad
+hl.bind("SUPER + grave", hl.dsp.exec_cmd("~/.local/bin/hypr-pop drawer"))
+hl.gesture({ fingers = 4, direction = "left", action = function() hl.exec_cmd("~/.local/bin/hypr-pop drawer") end })
+```
+
+Resting the pointer on the right screen edge opens it too (`"drawer_edge": false` in
+`~/.config/shoji/prefs.json` turns that off).

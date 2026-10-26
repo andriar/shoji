@@ -1,5 +1,5 @@
-"""The popovers under the bar: Sound, Network, Theme, Battery, Media, the launcher and the
-shortcuts sheet."""
+"""The popovers under the bar: Sound, Network, Theme, Battery, Media, Homelab, the launcher and
+the shortcuts sheet."""
 from shoji_widgets.base import *  # noqa: F401,F403
 from shoji_widgets.koyomi import *  # noqa: F401,F403
 
@@ -22,11 +22,12 @@ class Backdrop:
 
 class Popover:
     name = ""
+    namespace = "hypr-pop"   # the layer's name: Hyprland's animation and blur rules match it
     width = 320
 
     def __init__(self, manager, anchor_right=True):
         self.manager = manager
-        self.win = layer_window(f"hypr-pop", Layer.Layer.OVERLAY, keyboard=True)
+        self.win = layer_window(self.namespace, Layer.Layer.OVERLAY, keyboard=True)
         Layer.set_anchor(self.win, Layer.Edge.TOP, True)
         if anchor_right:
             Layer.set_anchor(self.win, Layer.Edge.RIGHT, True)
@@ -40,7 +41,7 @@ class Popover:
 
     def on_key(self, _w, ev):
         if ev.keyval == Gdk.KEY_Escape:
-            self.manager.close()
+            self.manager.escape()   # back to the drawer when it was opened from there, else closed
         return False
 
     def clear(self):
@@ -157,6 +158,73 @@ class Sound(Popover):
         self.box.show_all()
 
 
+class Vpn:
+    """Your VPNs: NetworkManager's (OpenVPN, WireGuard, …) and Tailscale when it is installed.
+    Switching runs in the background; NetworkManager asks for a password through its agent
+    (nm-applet) when it needs one, and `tailscale up` brings Tailscale back with its saved settings
+    (it needs `tailscale set --operator=$USER` once)."""
+    NM_TYPES = ("vpn", "wireguard")
+    pending = {}   # id -> the state asked for, while it changes
+
+    @staticmethod
+    def all():
+        out = []
+        for line in sh("nmcli", "-t", "-f", "NAME,UUID,TYPE,ACTIVE", "connection", "show").splitlines():
+            parts = line.rsplit(":", 3)   # a name may hold an escaped colon; the other fields never do
+            if len(parts) == 4 and parts[2] in Vpn.NM_TYPES:
+                out.append({"id": parts[1], "name": parts[0].replace("\\:", ":"), "kind": "nm", "on": parts[3] == "yes"})
+        if shutil.which("tailscale"):
+            try:
+                st = json.loads(sh("tailscale", "status", "--json") or "{}")
+            except ValueError:
+                st = {}
+            if st:
+                out.append({"id": "tailscale", "name": "Tailscale", "kind": "tailscale",
+                            "on": st.get("BackendState") == "Running"})
+        return out
+
+    @staticmethod
+    def switch(v, on, done):
+        cmd = (["tailscale", "up" if on else "down"] if v["kind"] == "tailscale"
+               else ["nmcli", "connection", "up" if on else "down", "uuid", v["id"]])
+        Vpn.pending[v["id"]] = on
+
+        def work():
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+                failed = r.returncode != 0 and (r.stderr or r.stdout).strip()
+            except subprocess.TimeoutExpired:
+                failed = "no answer in 90 s"
+            Vpn.pending.pop(v["id"], None)
+            sh("pkill", "-RTMIN+17", "-x", "waybar")   # the lock beside the network icon
+            if failed:
+                spawn("notify-send", "-a", "Network", f"{v['name']}: " + (T("could not connect") if on else T("could not disconnect")),
+                      str(failed)[:200])
+            GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    @staticmethod
+    def rows(into, done, row_spacing=2):
+        """One line per VPN: lock · name · a switch (insensitive while it changes)."""
+        for v in Vpn.all():
+            line = Gtk.Box(spacing=10)
+            line.get_style_context().add_class("vpn-row")
+            busy = v["id"] in Vpn.pending
+            line.pack_start(label(icon("lock" if v["on"] else "lock-open"), "icon", "on" if v["on"] else "off"), False, False, 0)
+            name = label(v["name"])
+            name.set_ellipsize(3)
+            line.pack_start(name, True, True, 0)
+            if busy:
+                line.pack_start(label(T("connecting…") if Vpn.pending[v["id"]] else T("disconnecting…"), "mono"), False, False, 0)
+            sw = Gtk.Switch(active=Vpn.pending.get(v["id"], v["on"]))
+            sw.set_valign(Gtk.Align.CENTER)
+            sw.set_sensitive(not busy)
+            sw.get_accessible().set_name(v["name"])
+            sw.connect("state-set", lambda s, state, vv=v: (Vpn.switch(vv, state, done), done(), False)[-1])
+            line.pack_start(sw, False, False, 0)
+            into.pack_start(line, False, False, row_spacing)
+
+
 class Network(Popover):
     name = "network"
 
@@ -171,9 +239,14 @@ class Network(Popover):
             sw.connect("notify::active", lambda s, _p: (sh("nmcli", "radio", "wifi", "on" if s.get_active() else "off"),
                                                          GLib.timeout_add(800, self.refresh_once)))
         self.header(T("Network"), sw)
+        if Vpn.all():   # first: what you switch most
+            self.box.pack_start(label("VPN", "label-small"), False, False, 4)
+            Vpn.rows(self.box, self.refresh_once)
+            self.box.pack_start(label(T("CONNECTED"), "label-small"), False, False, 4)
         for line in sh("nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active").splitlines():
             parts = line.split(":")
-            if len(parts) < 3 or parts[1] in ("loopback", "bridge") or parts[2].startswith(("docker", "br-", "veth", "lo")):
+            if len(parts) < 3 or parts[1] in ("loopback", "bridge", "tun", *Vpn.NM_TYPES) \
+                    or parts[2].startswith(("docker", "br-", "veth", "lo", "tailscale")):
                 continue
             ico = icon("wifi") if "wireless" in parts[1] else icon("lock") if "vpn" in parts[1] or "tun" in parts[1] else icon("ethernet-port")
             self.row(ico, parts[0], True, lambda: None)
@@ -1574,12 +1647,15 @@ class Preferences(Popover):
         ("rin", "Rin bell", "A soft bell for critical notifications and reminders", True),
         ("greet", "Terminal greeting", "Today's 候 and what is next, in each new terminal", False),
         ("eye_rest", "Rest your eyes", "Every 20 minutes, look at something far away for 20 seconds", False),
+        ("zazen_dim", "Dim the screen in a rest", "After zazen, one thing to do away from the screen, over a dimmed desktop", True),
     ]
     CHOICES = [  # key, title, [(value, label)], default
         ("lang", "Language", [("en", "English"), ("id", "Indonesia"), ("ja", "日本語")], "en"),
         ("numerals", "Workspace numbers", [("kanji", "一二三"), ("arabic", "123")], "kanji"),
         ("shimai", "End of the day", [("", "Off"), ("17:00", "17:00"), ("18:00", "18:00")], "17:00"),
         ("batch", "Notifications", [(0, "As they come"), (30, "Every 30 min"), (60, "Hourly")], 0),
+        ("zazen", "Zazen: focus · rest", [("25/5", "25 · 5"), ("50/10", "50 · 10"), ("90/20", "90 · 20")], "25/5"),
+        ("zazen_long", "Every 4th rest", [(0, "Same"), (15, "15 min"), (20, "20 min")], 15),
     ]
 
     def __init__(self, manager):
@@ -1643,10 +1719,370 @@ class Preferences(Popover):
         self.show()   # a new language shows at once
 
 
+try:  # the collector, for its paths and the span() format; an older install has none
+    HL = importlib.machinery.SourceFileLoader("shoji_homelab", str(HOME / ".local/bin/shoji-homelab")).load_module()
+except OSError:
+    HL = None
+
+
+PLUGINS = HOME / ".config/shoji/popovers"
+
+
+class Listing(Popover):
+    """A list popover in the Homelab style, for Homelab and for your own popovers
+    (~/.config/shoji/popovers/*.py): it opens under the cursor, keeps its scroll position across
+    rebuilds, and draws rows as dot · name · meta · actions with one hover for the whole width.
+    A subclass writes build(); on_open() runs after it is shown (fetch fresh data there).
+
+    A row given a `key` tells what happens to it: "working…" while its action runs, then "✓ done"
+    for OK_S or "✗ <why>" for FAIL_S. confirm() asks for a second click (within ARM_S) before an
+    action on many things at once; single actions never ask."""
+    width = 400
+    RANK = {"bad": 0, "warn": 1, "accent": 2, "ok": 3}
+    MAX_HEIGHT = 600
+    OK_S, FAIL_S, ARM_S = 2, 10, 3
+
+    def __init__(self, manager):
+        super().__init__(manager)
+        self.expanded, self.busy = set(), set()
+        self.outcome, self.armed = {}, {}
+        self.scroll = None
+
+    def place(self):
+        """Under the click: centred on the cursor, kept on the focused monitor."""
+        try:
+            x = float(sh("hyprctl", "cursorpos").split(",")[0])
+            mon = next(m for m in json.loads(sh("hyprctl", "monitors", "-j") or "[]") if m["focused"])
+        except (ValueError, IndexError, StopIteration):
+            return
+        w = round(mon["width"] / mon["scale"])
+        right = round(mon["x"] + w - x - self.width / 2)
+        Layer.set_margin(self.win, Layer.Edge.RIGHT, max(10, min(right, w - self.width - 10)))
+
+    def show(self):
+        self.place()
+        super().show()
+        self.on_open()
+
+    def on_open(self):
+        pass
+
+    def background(self, cmd, key=None):
+        """Run a command off the GTK thread (marking `key` busy meanwhile), keep how it went for that
+        row, then rebuild."""
+        if key:
+            self.busy.add(key)
+            self.refresh_once()
+
+        def work():
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+                ok, why = r.returncode == 0, ((r.stderr or r.stdout).strip().splitlines() or [""])[-1]
+            except (OSError, subprocess.TimeoutExpired) as e:
+                ok, why = False, str(e)
+            self.busy.discard(key)
+            if key:
+                self.outcome[key] = (ok, why[:80])
+                GLib.timeout_add_seconds(self.OK_S if ok else self.FAIL_S, self.forget, key)
+            GLib.idle_add(self.refresh_once)
+        threading.Thread(target=work, daemon=True).start()
+
+    def forget(self, key):
+        self.outcome.pop(key, None)
+        self.refresh_once()
+        return False
+
+    def status(self, key, meta=""):
+        """A row's meta, and its colour, while something happens to it."""
+        if key in self.busy:
+            return T("working…"), None
+        if key in self.armed:
+            return T("click again to confirm"), "warn"
+        if key in self.outcome:
+            ok, why = self.outcome[key]
+            return ("✓ " + T("done"), None) if ok else ("✗ " + (why or T("failed")), "bad")
+        return meta, None
+
+    def confirm(self, key, fn):
+        """For an action on many things at once: the first click arms it for ARM_S, the second runs it."""
+        if time.time() - self.armed.get(key, 0) < self.ARM_S:
+            self.armed.pop(key, None)
+            fn()
+            return
+        self.armed[key] = time.time()
+        self.refresh_once()
+
+        def disarm():
+            if time.time() - self.armed.get(key, 0) >= self.ARM_S:
+                self.armed.pop(key, None)
+                self.refresh_once()
+            return False
+        GLib.timeout_add(self.ARM_S * 1000 + 50, disarm)
+
+    def find(self, name):
+        stack = [self.box]
+        while stack:
+            w = stack.pop()
+            if w.get_name() == name:
+                return w
+            if isinstance(w, Gtk.Container):
+                stack.extend(w.get_children())
+        return None
+
+    def refresh_once(self):
+        if self.win.get_visible():
+            at = self.scroll.get_vadjustment().get_value() if self.scroll else 0
+            focused = self.win.get_focus()
+            was = focused.get_name() if focused else ""
+            self.clear()
+            self.build()
+            name_icons(self.box)
+            self.box.show_all()
+            again = self.find(was) if was.startswith(("row:", "act:", "tab:")) else None
+            if again:   # a keyboard user keeps their place across the rebuild
+                again.grab_focus()
+            else:
+                self.win.set_focus(None)   # else GTK focuses a row and scrolls to it
+
+            def keep():
+                if self.scroll:
+                    self.scroll.get_vadjustment().set_value(at)
+            GLib.idle_add(keep)
+        return False
+
+    # ---- rows
+    def section(self, into, title, first=False):
+        head = label(T(title), "label-small", "hl-section")
+        if first:
+            head.get_style_context().add_class("first")
+        into.pack_start(head, False, False, 0)
+
+    def line(self, into, level, text, meta="", actions=(), on_click=None, sub=False, chevron=None, tip="", key=None):
+        """dot · name · meta · actions, one hover for the whole width. The row's main part stays a
+        button (keyboard, screen readers); the EventBox around it only tells the row it is hovered."""
+        ev = Gtk.EventBox()   # without a window of its own it paints nothing: the Box does
+        ev.set_visible_window(False)
+        box = Gtk.Box(spacing=0)
+        ctx = box.get_style_context()
+        ctx.add_class("hl-line")
+        ctx.add_class(level)
+        if sub:
+            ctx.add_class("sub")
+        ev.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+        ev.connect("enter-notify-event", lambda _w, _e: ctx.add_class("hot"))
+        ev.connect("leave-notify-event", lambda _w, e: e.detail == Gdk.NotifyType.INFERIOR or ctx.remove_class("hot"))
+        meta, tone = self.status(key, meta) if key else (meta, None)
+        main = Gtk.Button()
+        main.set_name(f"row:{key or text}")
+        main.get_style_context().add_class("hl-main")
+        inner = Gtk.Box(spacing=10)
+        dot = Gtk.Box()
+        dot.get_style_context().add_class("hl-dot")
+        dot.get_style_context().add_class(level)
+        dot.set_valign(Gtk.Align.CENTER)
+        inner.pack_start(dot, False, False, 0)
+        name = label(text, "name")
+        name.set_ellipsize(3)  # END
+        inner.pack_start(name, True, True, 0)
+        if meta:
+            m = label(meta, "mono", "meta", *([tone] if tone else []), xalign=1)
+            m.set_ellipsize(3)
+            m.set_width_chars(min(len(meta), 22))   # a short reading keeps its width; the name gives way
+            m.set_max_width_chars(26)
+            inner.pack_start(m, False, False, 0)
+        if chevron:
+            inner.pack_start(label(icon(chevron), "icon"), False, False, 0)
+        main.add(inner)
+        if tip:
+            main.set_tooltip_text(tip)
+        if on_click:
+            main.connect("clicked", lambda *_: on_click())
+        box.pack_start(main, True, True, 0)
+        for _ in range(3 - len(actions)):   # actions keep their columns: logs always last
+            gap = Gtk.Box()
+            gap.set_size_request(26, -1)
+            box.pack_start(gap, False, False, 0)
+        for ico, tip_, fn in actions:
+            b = Gtk.Button(label=icon(ico))
+            b.set_name(f"act:{key or text}:{ico}")
+            b.get_style_context().add_class("hl-act")
+            b.set_valign(Gtk.Align.CENTER)
+            b.set_tooltip_text(tip_)
+            b.connect("clicked", lambda *_, f=fn: f())
+            b.connect("focus-in-event", lambda *_: ctx.add_class("hot"))     # the keyboard lights the row too
+            b.connect("focus-out-event", lambda *_: ctx.remove_class("hot"))
+            box.pack_start(b, False, False, 0)
+        main.connect("focus-in-event", lambda *_: ctx.add_class("hot"))
+        main.connect("focus-out-event", lambda *_: ctx.remove_class("hot"))
+        ev.add(box)
+        into.pack_start(ev, False, False, 0)
+
+    def worst(self, items):
+        return min((i["level"] for i in items), key=self.RANK.get, default="ok")
+
+    def scrolled(self, body):
+        """The list scrolls past MAX_HEIGHT; below it the popover is as tall as its rows."""
+        self.scroll = Gtk.ScrolledWindow()
+        self.scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        body.show_all()   # GTK 3 does not pass the natural height up through a scrolled window
+        self.scroll.set_min_content_height(min(body.get_preferred_height()[1], self.MAX_HEIGHT))
+        self.scroll.add(body)
+        self.box.pack_start(self.scroll, True, True, 0)
+
+
+class Homelab(Listing):
+    """家 Homelab, read from shoji-homelab's cache (the bar refreshes it every 30 s).
+
+    Problems first: ATTENTION lists what is down or warns (the one inbox is 待; this is the status), with its reason and its actions at full
+    strength. Below it the inventory stays quiet: muted dots and names, no readings (they are in the
+    row's tooltip), actions dimmed until the row is hovered. Healthy is muted, never green. Every
+    action runs at once, with no confirmation (the owner's choice)."""
+    name = "homelab"
+    width = 400
+    STALE_S = 90
+
+    def on_open(self):
+        self.fetch("--stats")
+
+    def fetch(self, *args):
+        self.background([str(HOME / ".local/bin/shoji-homelab"), "collect", *args])
+
+    def act(self, action, kind, name):
+        if action == "logs":
+            spawn(str(HOME / ".local/bin/shoji-homelab"), "do", action, kind, name)
+            self.manager.close()
+            return
+        self.background([str(HOME / ".local/bin/shoji-homelab"), "do", action, kind, name], key=f"{kind}:{name}")
+
+    def power(self, kind, name, running, every=False):
+        """restart + stop while it runs, start when it does not; logs always. Stop all asks for a second
+        click; a stopped container can be marked expected (ignored) so it stops turning 家 red."""
+        stop = (lambda: self.confirm(f"{kind}:{name}", lambda: self.act("stop", kind, name))) if every \
+            else (lambda: self.act("stop", kind, name))
+        acts = [("rotate-cw", T("Restart all") if every else T("Restart"), lambda: self.act("restart", kind, name)),
+                ("square", T("Stop all") if every else T("Stop"), stop)] if running else \
+               [("play", T("Start all") if every else T("Start"), lambda: self.act("start", kind, name))]
+        if kind == "container" and not running:
+            acts.insert(0, ("eye-off", T("Expected: stop watching it"), lambda: self.act("ignore", kind, name)))
+        return acts + [("scroll-text", T("Logs"), lambda: self.act("logs", kind, name))]
+
+    def unit_actions(self, u):
+        if u["kind"] == "timer":
+            return [("play", T("Run now"), lambda n=u["name"]: self.act("run", "unit", n)),
+                    ("scroll-text", T("Logs"), lambda n=u["name"]: self.act("logs", "unit", n))]
+        return self.power("unit", u["name"], u["level"] != "bad")
+
+    def open_url(self, url):
+        return [("external-link", T("Open"), lambda: (self.manager.close(), spawn("xdg-open", url)))]
+
+    def reading(self, c):
+        """What a healthy container's row shows on hover: uptime, CPU, memory."""
+        return " · ".join(x for x in (c["why"], c.get("cpu"), c.get("mem")) if x)
+
+    def why(self, kind, item):
+        return item["why"]
+
+    # ---- the panel
+    def build(self):
+        data = HL.read_cache() if HL else None
+        refresh = Gtk.Button(label=T("Refresh"))
+        refresh.get_style_context().add_class("chip")
+        refresh.connect("clicked", lambda *_: self.fetch("--stats"))
+        self.header(T("Homelab"), refresh)
+        if not data:
+            self.box.pack_start(label(T("Not set up yet: run {cmd}").format(cmd="shoji-homelab init"), "muted"),
+                                False, False, 6)
+            self.scroll = None
+            return
+        cs, now = data["containers"], time.time()
+        down = sum(p["level"] == "bad" for p in data["problems"])
+        running = f"{sum(c['state'] == 'running' for c in cs)}/{len(cs)}"
+        summary = Gtk.Box(spacing=0)
+        summary.pack_start(label((T("{n} down").format(n=down) if down else T("all well")) + f" · {running}",
+                                 "mono", "hl-summary", "bad" if down else "ok"), False, False, 0)
+        age = now - data["at"]
+        if age > self.STALE_S:   # the bar is not collecting (waybar stopped, or a check hangs)
+            summary.pack_start(label(" · " + T("updated {t} ago").format(t=HL.span(age)), "mono", "hl-stale"),
+                               False, False, 0)
+        self.box.pack_start(summary, False, False, 0)
+
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        units = {u["name"]: u for u in data["units"]}
+        endpoints = {e["name"]: e for e in data["endpoints"]}
+        containers = {c["name"]: c for c in cs}
+        first = True
+        if data["problems"]:
+            self.section(body, "ATTENTION", first=True)
+            first = False
+            for p in data["problems"]:
+                acts = ()
+                if p["kind"] == "container" and p["name"] in containers:
+                    c = containers[p["name"]]
+                    acts = self.power("container", c["name"], c["state"] == "running")
+                elif p["kind"] == "unit" and p["name"] in units:
+                    acts = self.unit_actions(units[p["name"]])
+                elif p["kind"] == "endpoint" and p["name"] in endpoints:
+                    acts = self.open_url(endpoints[p["name"]]["url"])
+                self.line(body, p["level"], p["name"].removeprefix("system:"), p["why"], acts,
+                          key=f"{p['kind']}:{p['name']}")
+
+        if cs:
+            self.section(body, "CONTAINERS", first=first)
+            stacks = {}
+            for c in cs:
+                stacks.setdefault(c["stack"] or c["name"], []).append(c)
+            for stack, items in sorted(stacks.items()):
+                if len(items) == 1:
+                    c = items[0]
+                    self.line(body, c["level"], c["name"], c["why"] if c["level"] != "ok" else "",
+                              self.power("container", c["name"], c["state"] == "running"), tip=self.reading(c),
+                              key=f"container:{c['name']}")
+                    continue
+                up = sum(c["state"] == "running" for c in items)
+                open_ = stack in self.expanded
+                self.line(body, self.worst(items), stack, f"{up}/{len(items)}", self.power("stack", stack, up > 0, every=True),
+                          on_click=lambda s=stack: self.expand(s), chevron="chevron-down" if open_ else "chevron-right",
+                          key=f"stack:{stack}")
+                if open_:
+                    for c in items:
+                        self.line(body, c["level"], c["name"].removeprefix(stack + "-"),
+                                  c["why"] if c["level"] != "ok" else "",
+                                  self.power("container", c["name"], c["state"] == "running"), sub=True,
+                                  tip=self.reading(c), key=f"container:{c['name']}")
+        if data["units"]:
+            self.section(body, "SERVICES")
+            for u in data["units"]:
+                self.line(body, u["level"], u["name"].removeprefix("system:"), u["why"] if u["level"] != "ok" else "",
+                          self.unit_actions(u), tip=u["why"], key=f"unit:{u['name']}")
+        if data["endpoints"]:
+            self.section(body, "PUBLIC")
+            for e in data["endpoints"]:
+                self.line(body, e["level"], e["name"], e["why"] if e["level"] != "ok" else "",
+                          self.open_url(e["url"]), on_click=lambda u=e["url"]: (self.manager.close(), spawn("xdg-open", u)),
+                          tip=f"{e['url']} · {e['why']}")
+        self.section(body, "HOST")
+        host = data["host"]
+        self.line(body, self.worst(host),
+                  " · ".join(f"{h['name']} {h['pct']}%" for h in host if h["kind"] in ("disk", "mem", "swap")
+                             and h.get("pct") is not None),
+                  tip="\n".join(f"{h['name']} · {h['why']}" for h in host))
+        if data["backups"]:
+            self.section(body, "BACKUPS")
+            for b in data["backups"]:
+                self.line(body, b["level"], b["name"], b["why"])
+
+        self.scrolled(body)
+        self.footer(T("Edit config…"), ["xdg-open", str(HL.CONFIG)])
+
+    def expand(self, stack):
+        self.expanded ^= {stack}
+        self.refresh_once()
+
+
 class Popovers:
     def __init__(self):
         self.backdrop = Backdrop(self.close)
-        self.items = {cls.name: cls(self) for cls in (Sound, Network, Bluetooth, Battery)}
+        self.items = {cls.name: cls(self) for cls in (Sound, Network, Bluetooth, Battery, Homelab)}
         self.items["theme"] = ThemeManager(self)
         self.items["launcher"] = Launcher(self)
         self.items["keys"] = Keys(self)
@@ -1654,10 +2090,31 @@ class Popovers:
         self.items["clipboard"] = Clipboard(self)
         self.items["switch"] = Switch(self)
         self.items["prefs"] = Preferences(self)
+        self.cards = []
+        self.load_plugins()
+        from shoji_widgets import drawer   # drawer imports this module, so not at the top
+        self.items["drawer"] = drawer.Drawer(self, drawer.BUILT_IN + self.cards)
+        self.edge = drawer.EdgeTrigger(self)
         self.open = None
+        self.back = None   # the surface Esc returns to (the drawer, when a card opened this)
         GLib.timeout_add_seconds(300, self.sun_tick)
 
-    def toggle(self, name):
+    def load_plugins(self):
+        """Your own popovers: every ~/.config/shoji/popovers/*.py that sets POPOVERS = [classes] (and
+        CARDS = [drawer cards], optional)
+        (Listing or Popover subclasses, each with its own name; `hypr-pop <name>` opens one).
+        They import what they need with `from shoji_widgets.popovers import *`. A broken file is
+        reported and skipped, so it never takes the other surfaces down."""
+        for f in sorted(PLUGINS.glob("*.py")):
+            try:
+                mod = importlib.machinery.SourceFileLoader(f"shoji_plugin_{f.stem}", str(f)).load_module()
+                for cls in getattr(mod, "POPOVERS", []):
+                    self.items[cls.name] = cls(self)
+                self.cards += getattr(mod, "CARDS", [])   # drawer cards (shoji_widgets.drawer.Card)
+            except Exception as e:  # noqa: BLE001  a plugin may fail any way
+                print(f"popover plugin {f.name}: {e!r}", file=sys.stderr)
+
+    def toggle(self, name, back=None):
         if name not in self.items:
             return
         if self.open == name and hasattr(self.items[name], "again"):  # Alt+Tab again: next card
@@ -1670,6 +2127,13 @@ class Popovers:
         self.backdrop.win.show()
         self.items[name].show()
         self.open = name
+        self.back = back
+
+    def escape(self):
+        back = self.back
+        self.close()
+        if back:
+            self.toggle(back)
 
     def open_with(self, name, query):
         if self.open != name:
@@ -1682,6 +2146,7 @@ class Popovers:
             self.items[self.open].hide()
         self.backdrop.win.hide()
         self.open = None
+        self.back = None
 
     def sun_tick(self, force=False):
         """Follow the sun: switch to the light palette at 06:00 and the dark one at 18:00.

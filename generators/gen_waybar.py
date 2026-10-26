@@ -4,7 +4,7 @@
 One paper strip, three zones:
   left    search · workspaces 一二三四 (seal = current; shoji-ws, clickable) · window title
   center  time + weekday kanji · unread dot          (click: Koyomi panel = swaync + calendar)
-  right   load · on-only indicators · network · mic · ensō volume · battery · tray
+  right   load · on-only indicators · homelab · network · mic · ensō volume · battery · tray
 Icons are Lucide (font family "lucide"); private-use glyphs are written with chr(), never typed.
 """
 import json
@@ -26,7 +26,7 @@ cfg = {
     "modules-left": ["custom/launcher", "custom/ws-watch", *WS, "hyprland/window"],
     "modules-center": ["custom/clock", "custom/notification"],
     "modules-right": ["custom/media", "custom/record", "custom/system", "custom/keepawake", "custom/nightlight", "custom/btbat",
-                      "network", "pulseaudio#mic", "image#vol", "pulseaudio", "image#bat", "battery", "group/tray"],
+                      "group/homelab", "group/net", "pulseaudio#mic", "image#vol", "pulseaudio", "image#bat", "battery", "custom/drawer", "group/tray"],
 
     "custom/launcher": {"format": L("search"), "tooltip-format": "Search apps (Super+Space)",
                         "on-click": f"{BIN}/hypr-pop launcher"},
@@ -61,12 +61,26 @@ cfg = {
     # a Bluetooth device running low (shoji-btbat prints nothing above 20 %); click = its popover
     "custom/btbat": {"exec": f"{BIN}/shoji-btbat", "return-type": "json", "interval": 120,
                      "on-click": f"{BIN}/hypr-pop bluetooth"},
+    # homelab: a quiet server glyph (a reading: 11 px), the number down beside it in the alert
+    # colour; two modules so each label holds one font and sits on the bar's centre (like the
+    # volume ensō + number). Hidden until ~/.config/shoji/homelab.json exists.
+    # Click = Homelab popover, right-click = check now
+    "group/homelab": {"orientation": "inherit", "modules": ["custom/homelab", "custom/homelab-n"]},
+    "custom/homelab": {"exec": f"{BIN}/shoji-homelab bar", "return-type": "json", "interval": 30, "signal": 13,
+                       "on-click": f"{BIN}/hypr-pop homelab", "on-click-right": "pkill -RTMIN+13 -x waybar"},
+    "custom/homelab-n": {"exec": f"{BIN}/shoji-homelab count", "return-type": "json", "interval": "once",
+                         "signal": 14, "on-click": f"{BIN}/hypr-pop homelab",
+                         "on-click-right": "pkill -RTMIN+13 -x waybar"},
     # on/off switches live in the Koyomi panel; the bar only shows the ones that are on
     "custom/keepawake": {"exec": f"{BIN}/keep-awake status", "return-type": "json",
                          "interval": "once", "signal": 12, "on-click": f"{BIN}/keep-awake toggle"},
     "custom/nightlight": {"exec": f"{BIN}/hypr-nightlight status", "return-type": "json",
                           "interval": "once", "signal": 8, "on-click": f"{BIN}/hypr-nightlight toggle"},
 
+    # the network icon and, while a VPN carries your traffic, a lock: one chip, one hover
+    "group/net": {"orientation": "inherit", "modules": ["network", "custom/vpn"]},
+    "custom/vpn": {"exec": f"{BIN}/shoji-vpn", "return-type": "json", "interval": 5, "signal": 17,
+                   "on-click": f"{BIN}/hypr-pop network"},
     "network": {
         "format-ethernet": L("ethernet-port"), "format-wifi": L("wifi"), "format-disconnected": L("wifi-off"),
         "tooltip-format": "{ifname} · {ipaddr}\nClick: network", "tooltip-format-disconnected": "Offline\nClick: network",
@@ -103,6 +117,9 @@ cfg = {
         "tooltip-format": "{timeTo}\nClick: battery and power mode",
         "on-click": f"{BIN}/hypr-pop battery",
     },
+    # 引出し the drawer of widgets (also Super+grave, or rest the pointer on the right screen edge)
+    "custom/drawer": {"format": L("panel-right"), "tooltip-format": "Widgets (Super+`)",
+                      "on-click": f"{BIN}/hypr-pop drawer"},
     # app tray icons stay tucked away: hover the dots to slide them out
     "group/tray": {"orientation": "inherit", "modules": ["custom/traydots", "tray"],
                    "drawer": {"transition-duration": 180, "transition-left-to-right": False,
@@ -110,6 +127,23 @@ cfg = {
     "custom/traydots": {"format": L("ellipsis"), "tooltip-format": "App icons — hover to show"},
     "tray": {"spacing": 8, "icon-size": 16},
 }
+# a desktop has no battery: leave its two modules out (an empty image module still takes a hover)
+if not list(Path("/sys/class/power_supply").glob("BAT*")):
+    cfg["modules-right"] = [m for m in cfg["modules-right"] if m not in ("image#bat", "battery")]
+
+# your own modules: ~/.config/shoji/waybar-local.json = {"right": [names], "modules": {name: config},
+# "css": "..."}; the names go in front of the homelab chip (or of the network icon)
+LOCAL = Path.home() / ".config/shoji/waybar-local.json"
+try:
+    local = json.loads(LOCAL.read_text())
+except (OSError, ValueError):
+    local = {}
+if local.get("right"):
+    right = cfg["modules-right"]
+    at = right.index("group/homelab") if "group/homelab" in right else right.index("group/net")
+    cfg["modules-right"] = right[:at] + [m for m in local["right"] if m not in right] + right[at:]
+cfg.update(local.get("modules", {}))
+
 (W / "config.jsonc").write_text("// Generated by ~/.config/shoji/gen_waybar.py — edit that, not this file\n"
                                 + json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
 
@@ -139,7 +173,8 @@ tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
 
 /* every clickable thing */
 #custom-launcher, #custom-ws, #window, #custom-clock, #custom-notification, #custom-record,
-#custom-system, #custom-keepawake, #custom-nightlight, #custom-btbat, #network, #pulseaudio, #image, #battery, #tray {
+#custom-system, #custom-keepawake, #custom-nightlight, #custom-btbat, #homelab, #net, #pulseaudio, #image, #battery,
+#tray {
   padding: 0 7px;
   margin: 3px 1px;
   border-radius: 4px;
@@ -148,7 +183,7 @@ tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
   transition: background 150ms ease-out, color 150ms ease-out;  /* none under reduced motion (below) */
 }
 #custom-launcher:hover, #custom-ws:hover, #custom-clock:hover, #custom-notification:hover,
-#custom-system:hover, #custom-btbat:hover, #network:hover, #pulseaudio:hover, #image:hover {
+#custom-system:hover, #custom-btbat:hover, #homelab:hover, #net:hover, #pulseaudio:hover, #image:hover {
   background: @hover;
 }
 
@@ -181,6 +216,12 @@ window#waybar.empty #window { background: transparent; }
 
 #custom-btbat { font-family: "lucide", "JetBrainsMono Nerd Font"; font-size: 11px; color: @warn; }
 #custom-btbat.critical { color: @alert; }
+/* homelab: glyph + count are two modules (one font each, so both sit on the centre) in one
+   group, which carries the chip's padding and its one hover */
+#custom-homelab { font-family: "lucide"; font-size: 11px; color: @muted; }
+#custom-homelab.warn { color: @warn; }
+#custom-homelab.down { color: @alert; }
+#custom-homelab-n { font-family: "JetBrainsMono Nerd Font"; font-size: 11px; color: @alert; padding-left: 4px; }
 #custom-media { padding: 0 10px 0 36px; font-size: 12px; color: @text; }
 #custom-media.paused { color: @muted; }
 #custom-system { font-family: "JetBrainsMono Nerd Font"; font-size: 11px; color: @muted; }
@@ -189,7 +230,9 @@ window#waybar.empty #window { background: transparent; }
 #custom-record.recording { color: @alert; }
 #custom-keepawake.on, #custom-nightlight.on { color: @accent; }
 
-#network { font-size: 13px; }
+#net { padding: 0; }   /* the group carries margin and hover; its icons their own padding */
+#network { font-size: 13px; padding: 0 7px; }
+#custom-vpn { font-family: "lucide"; font-size: 11px; color: @accent; padding: 0 7px 0 0; margin-left: -3px; }
 #network.disconnected { color: @alert; }
 #pulseaudio { font-family: "JetBrainsMono Nerd Font"; font-size: 11px; padding-left: 2px; padding-right: 8px; }
 #pulseaudio.muted { color: @muted; }
@@ -199,6 +242,9 @@ window#waybar.empty #window { background: transparent; }
 #battery.critical:not(.charging) { background: alpha(@alert, 0.22); color: @alert; }
 #tray { padding: 0 4px; }
 #custom-traydots { color: @muted; padding: 0 6px; font-size: 13px; }
+#custom-drawer { font-family: "lucide"; font-size: 13px; color: @muted; padding: 0 7px; margin: 3px 1px;
+                 border-radius: 4px; transition: background 150ms ease-out; }
+#custom-drawer:hover { background: @hover; color: @text; }
 /* app icons arrive in every color: keep them quiet until hovered (GTK3 has no grayscale filter) */
 #tray > widget image { opacity: 0.72; }
 #tray > widget:hover image, #tray > .needs-attention image { opacity: 1; }
@@ -264,5 +310,6 @@ if REDUCED:
     css += "* { transition: none; }\n"
 # the mic module shares #pulseaudio; give it the icon size back
 css += "#pulseaudio.mic { font-family: \"lucide\"; font-size: 13px; padding: 0 7px; }\n"
+css += local.get("css", "")
 (W / "style.css").write_text(css)
 print("ok")

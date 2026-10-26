@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- 家 Homelab: `shoji-homelab` watches Docker (by compose stack), systemd units, public endpoints,
+  disks / memory / swap and backup ages every 30 s; the bar shows a quiet 11 px server glyph, red
+  with the number down beside it (two modules, one font each, so both sit on the bar's centre).
+  Its popover (`hypr-pop homelab`) opens under the cursor: NEEDS YOU first, then a quiet inventory
+  (muted dots and names, readings in each row's tooltip, actions dimmed until the row is hovered);
+  it restarts, stops, starts, runs timers and opens logs without asking. Opt-in: nothing shows until
+  `~/.config/shoji/homelab.json` exists. Changes (down, back up) send a notification.
+- 休 The rest card: after zazen, one suggestion over a dimmed desktop (prefs "zazen_dim"), picked
+  by `shoji_widgets/rest.py` for the minutes, hour, weather, next meeting and your skip history;
+  box breathing with an ensō; ✓ / ↻ / ⏭ logged to ~/.local/state/shoji-rest.log. Focus and rest
+  lengths in Preferences ("zazen": 25/5, 50/10, 90/20; every 4th rest "zazen_long").
+- Your own popovers: `~/.config/shoji/popovers/*.py` (`POPOVERS = [...]`, built on `Listing`,
+  the Homelab look) and your own bar modules in `~/.config/shoji/waybar-local.json`.
+
 ## 0.7.0 — 2026-10-26
 
 - The wallpaper is Fuji in ink, laid out on the golden ratio: the summit where the 0.382 lines

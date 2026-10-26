@@ -56,6 +56,13 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
   (smooth CSS animation, no polling per frame). Click for the Media popover.
 - Readings appear only when they need you: cpu · mem from 70 %, a Bluetooth device's battery from
   20 % down (headphones, mouse), indicators only while on.
+- **家 Homelab** (optional, `shoji-homelab init`): a quiet server glyph that turns red with the
+  number of things down. Click it for the Homelab popover under the cursor: what needs you first,
+  then containers by compose stack, systemd services and timers, public endpoints, disks, memory,
+  swap and backup ages, all quiet until hovered (uptime, CPU · memory, latency in the tooltip). Every row acts
+  at once: restart, stop / start, logs in a terminal, run a timer now. A change (down, back up)
+  sends a notification. What to watch lives in `~/.config/shoji/homelab.json` (format in
+  `shoji-homelab --help`).
 
 **Koyomi (暦), under the clock**
 - One container: the calendar, today's micro-season (七十二候, e.g. 霜始降 "first frost") and the
@@ -65,9 +72,13 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
 - Notifications stack per app like iOS; clicking one takes you to its window and workspace.
 
 **Calm on purpose**
-- **Zazen** (Super+Z): 25 minutes of focus. Silent, no bar, other windows dimmed, an ensō closes
-  at the top. At the end everything comes back, you hear how many notifications waited, and a
-  5-minute rest (休) follows; Koyomi counts the day's sessions (座 ×3).
+- **Zazen** (Super+Z): 25 minutes of focus (or 50 · 10, 90 · 20 in Preferences). Silent, no bar,
+  other windows dimmed, an ensō closes at the top. At the end everything comes back, you hear how
+  many notifications waited, and a rest (休) follows, longer every 4th time. The **rest card**
+  dims the desktop and offers one thing to do away from the screen — stretch your neck, look far
+  away, drink water, step outside, box-breathe with an ensō that opens and closes — chosen for the
+  minutes you have, the hour, the weather and a meeting about to start, and less of what you skip.
+  ✓ Done, ↻ Another or ⏭ Skip; the drawer's Focus card counts sessions and rests taken (座 ×3 · 休 ×2).
 - **墨 Ink** when you step away: after 8 idle minutes the desktop sinks into the palette's ground
   and slow drops of ink bloom on it, the time and the day's 候 in a corner; any input brings the
   desktop back. At 10 minutes the lock screen takes over that very picture, the clock and ensō
@@ -277,6 +288,7 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 | `shoji doctor --deps` | what is installed, and what each missing piece would add |
 | `shoji vscode` · `shoji spotify` · `shoji chrome` | turn on an app theme (once) |
 | `shoji greet` · `shoji season` · `shoji moon` | today's 候 and what is next · the season · redraw the moon |
+| `shoji-homelab init` · `shoji-homelab collect` | start watching your homelab · check now (JSON) |
 
 Preferences live in `~/.config/shoji/prefs.json`: `"seasonal"`, `"follow_sun"`, `"weather"` (`false`,
 or `{"place": "Kyoto"}`; default: the city of your time zone), `"greet"` (one dim
@@ -286,6 +298,35 @@ line in new terminals), `"rin"` (false = no bell), `"auto_silent"` (false = no S
 
 Easiest: Theme manager → **Your own** (saved in `~/.config/shoji/palettes.json`). By hand: add an entry to `PALETTES` in `bin/shoji` (ground, text, muted, accent, text-on-accent, and the
 wallpaper sky and hills), then `shoji doctor <name>` to check contrast and `shoji apply <name>`.
+
+## Make your own popover
+
+Shoji draws any list you give it in the Homelab style. Put a Python file in
+`~/.config/shoji/popovers/`, restart `hypr-widgets`, open it with `hypr-pop <name>`:
+
+```python
+from shoji_widgets.popovers import *   # Listing, Gtk, T, spawn, …
+
+class Deploys(Listing):
+    name = "deploys"                    # hypr-pop deploys
+
+    def on_open(self):                  # fetch fresh data off the GTK thread, then rebuild
+        self.background(["my-collector", "--now"], key="checking")
+
+    def build(self):
+        self.header("Deploys")
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.section(body, "TODAY", first=True)
+        self.line(body, "bad", "api", "failed · 3m",                       # level: ok | warn | bad
+                  [("rotate-cw", "Retry", lambda: self.background(["my-retry", "api"], key="api"))])
+        self.scrolled(body)
+
+POPOVERS = [Deploys]
+```
+
+A bar chip for it goes in `~/.config/shoji/waybar-local.json` (`{"right": [modules], "modules":
+{…}, "css": "…"}`); `gen_waybar.py` puts those modules in front of the homelab chip. A file that
+fails to load is reported on stderr and skipped; the rest of Shoji keeps running.
 
 ## How it is built
 

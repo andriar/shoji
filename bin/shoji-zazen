@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """坐禅 Zazen: a focus session. Silences notifications, hides the bar, dims the windows you are not
 in, and hypr-widgets shows a small ensō at the top that closes as the time passes. At the end
-everything comes back, one notification says how many came in meanwhile, and a 5-minute rest (休)
-follows with its own quieter ensō. Finished sessions are counted per day (Koyomi shows 座 ×N).
+everything comes back, one notification says how many came in meanwhile, and a rest (休) follows
+with its own quieter ensō and a rest card: one thing to do away from the screen (hypr-widgets picks
+it, see shoji_widgets/rest.py). Finished sessions are counted per day (Koyomi shows 座 ×N).
+
+Lengths come from prefs: "zazen" = "FOCUS/REST" minutes ("25/5", "50/10", "90/20"), and every
+LONG_EVERY-th rest lasts "zazen_long" minutes (0 = never). The Preferences popover sets both.
 
   shoji-zazen toggle [MIN]   start (default 25 min), or stop a running session or rest
   shoji-zazen start [MIN] | stop [--done] | status | today
@@ -17,9 +21,26 @@ from pathlib import Path
 RUN = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
 STATE = RUN / "shoji-zazen.json"
 FIFO = RUN / "hypr-osd.fifo"   # hypr-widgets draws the ensō
-DEFAULT_MIN = 25
-REST_MIN = 5
+DEFAULT_MIN, REST_MIN, LONG_MIN, LONG_EVERY = 25, 5, 15, 4
+PREFS = Path.home() / ".config/shoji/prefs.json"
 LOG = Path.home() / ".local/state/shoji-zazen.log"   # one line per finished session: date minutes
+
+
+def lengths():
+    """(focus, rest, long rest) minutes from prefs, the defaults where unset or unreadable."""
+    try:
+        p = json.loads(PREFS.read_text())
+    except (OSError, ValueError):
+        p = {}
+    try:
+        focus, rest_ = (int(x) for x in str(p.get("zazen", f"{DEFAULT_MIN}/{REST_MIN}")).split("/"))
+    except ValueError:
+        focus, rest_ = DEFAULT_MIN, REST_MIN
+    try:
+        long_ = int(p.get("zazen_long", LONG_MIN))
+    except (TypeError, ValueError):
+        long_ = LONG_MIN
+    return focus, rest_, long_
 
 
 def run(*cmd):
@@ -72,9 +93,16 @@ def start(minutes):
     tell_widgets("zazen\tstart")
 
 
+def rest_minutes(done_today):
+    _, short, long_ = lengths()
+    return long_ if long_ and done_today and done_today % LONG_EVERY == 0 else short
+
+
 def rest():
-    STATE.write_text(json.dumps({"phase": "rest", "start": time.time(), "minutes": REST_MIN}))
+    minutes = rest_minutes(today_count())
+    STATE.write_text(json.dumps({"phase": "rest", "start": time.time(), "minutes": minutes}))
     tell_widgets("zazen\tstart")
+    tell_widgets("rest\tshow")   # the rest card: one thing to do, over a dimmed screen
 
 
 def today_count():
@@ -92,6 +120,7 @@ def stop(done=False):
     STATE.unlink(missing_ok=True)
     tell_widgets("zazen\tstop")
     if state.get("phase") == "rest":
+        tell_widgets("rest\thide")
         if done:
             run("notify-send", "-a", "Zazen", "-u", "low", "休 · rest is over", "Super+Z when you are ready for the next one.")
         return
@@ -110,7 +139,7 @@ def stop(done=False):
         held = max(0, int(run("swaync-client", "-c") or 0) - state.get("held_from", 0))
         meanwhile = f"{held} notification{'s' * (held != 1)} came in meanwhile." if held else "Nothing came in meanwhile."
         run("notify-send", "-a", "Zazen", f"坐禅 · done ({today_count()} today)",
-            f"{state['minutes']} minutes of focus. {meanwhile} Now {REST_MIN} minutes of rest: stand up, drink water.")
+            f"{state['minutes']} minutes of focus. {meanwhile} Now {rest_minutes(today_count())} minutes of rest.")
         rest()
     elif minutes:
         run("notify-send", "-a", "Zazen", "-u", "low", "坐禅 · stopped", f"after {minutes} of {state['minutes']} minutes")
@@ -119,7 +148,7 @@ def stop(done=False):
 def main():
     args = sys.argv[1:] or ["toggle"]
     cmd = args[0]
-    minutes = int(args[1]) if len(args) > 1 and args[1].isdigit() else DEFAULT_MIN
+    minutes = int(args[1]) if len(args) > 1 and args[1].isdigit() else lengths()[0]
     if cmd == "toggle":
         stop() if running() else start(minutes)
     elif cmd == "start":

@@ -1,0 +1,453 @@
+#!/usr/bin/env python3
+"""Homelab watch for waybar (custom/homelab) and the Homelab popover (hypr-pop homelab).
+
+Opt-in: the bar shows nothing until ~/.config/shoji/homelab.json exists (`shoji-homelab init`
+writes a starter one). One collector reads Docker (state, health, restarts, by compose stack),
+systemd units, public endpoints, disks / memory / swap and backup ages, and writes
+$XDG_RUNTIME_DIR/shoji-homelab.json; the bar and the popover only read that file.
+
+Kanso, like the other readings: a quiet 11 px server glyph while all is well (it stays: it is the
+way into the popover), the number of things down beside it in the alert colour when something is. A change (down, or back up) also sends a notification.
+
+  shoji-homelab bar                         collect, print the glyph's waybar JSON (interval 30 s)
+  shoji-homelab count                       the number down, from the last collection (signal 14)
+  shoji-homelab collect [--stats]           collect; --stats adds CPU / memory per container
+  shoji-homelab do ACTION KIND NAME         restart|stop|start|run|logs|ignore  container|stack|unit
+  shoji-homelab init                        write a starter config
+
+Config (all keys optional):
+  {"endpoints": [{"name": "vault", "url": "https://vault.example.com"}],
+   "units": ["my-bot.service", "backup.timer", "system:docker.service"],
+   "disks": ["/", "/srv"],
+   "backups": [{"name": "photos db", "path": "/srv/backups/last", "max_age_h": 26}],
+   "ignore": ["a-container-left-stopped-on-purpose"]}
+"""
+import concurrent.futures
+import datetime
+import fcntl
+import functools
+import html
+import json
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+CONFIG = Path.home() / ".config/shoji/homelab.json"
+RUN = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+CACHE = RUN / "shoji-homelab.json"
+LOCK = RUN / "shoji-homelab.lock"
+SIGNAL = 13
+DISK_WARN, DISK_BAD = 80, 90
+SLOW_MS = 2000
+TERMINAL = ["ghostty", "--class=dev.shoji.logs", "--confirm-close-surface=false"]
+
+
+def sh(*cmd, timeout=10):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def config():
+    try:
+        return json.loads(CONFIG.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def read_cache():
+    try:
+        return json.loads(CACHE.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def epoch(stamp):
+    """Docker's RFC 3339 time (nanoseconds, Z) as epoch seconds; 0 for its zero time."""
+    if not stamp or stamp.startswith("0001"):
+        return 0
+    return datetime.datetime.fromisoformat(stamp[:19]).replace(tzinfo=datetime.timezone.utc).timestamp()
+
+
+def span(seconds):
+    """3m, 5h, 2d: short enough for a meta column."""
+    s = max(0, int(seconds))
+    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
+        if s >= size:
+            return f"{s // size}{unit}"
+    return f"{s}s"
+
+
+# ---------------------------------------------------------------- docker
+def container_level(c):
+    if c["state"] == "running":
+        return {"unhealthy": "bad", "starting": "warn"}.get(c["health"], "ok")
+    return "warn" if c["state"] == "paused" else "bad"
+
+
+def container_why(c, now):
+    if c["state"] == "running":
+        return " · ".join(x for x in (c["health"], f"up {span(now - c['since'])}" if c["since"] else "") if x)
+    ago = f" {span(now - c['since'])} ago" if c["since"] else ""
+    return f"{c['state']} ({c['exit']}){ago}" if c["state"] == "exited" else c["state"] + ago
+
+
+def containers(ignore, now):
+    ids = sh("docker", "ps", "-aq").split()
+    if not ids:
+        return []
+    try:
+        info = json.loads(sh("docker", "inspect", *ids) or "[]")
+    except ValueError:
+        return []
+    out = []
+    for c in info:
+        name, st = c["Name"].lstrip("/"), c["State"]
+        if name in ignore:
+            continue
+        item = {"name": name, "stack": (c["Config"].get("Labels") or {}).get("com.docker.compose.project", ""),
+                "state": st["Status"], "health": (st.get("Health") or {}).get("Status", ""),
+                "exit": st.get("ExitCode", 0), "restarts": c.get("RestartCount", 0),
+                "since": epoch(st["StartedAt"] if st["Status"] == "running" else st["FinishedAt"])}
+        item["level"], item["why"] = container_level(item), container_why(item, now)
+        out.append(item)
+    return sorted(out, key=lambda c: (c["stack"] or c["name"], c["name"]))
+
+
+def stats():
+    """CPU and memory per container (docker stats takes about two seconds: only on request)."""
+    out = {}
+    for line in sh("docker", "stats", "--no-stream", "--format", "{{json .}}", timeout=20).splitlines():
+        try:
+            s = json.loads(line)
+        except ValueError:
+            continue
+        out[s["Name"]] = {"cpu": s["CPUPerc"], "mem": s["MemUsage"].split(" / ")[0]}
+    return out
+
+
+# ---------------------------------------------------------------- systemd
+def unit_cmd(unit):
+    """("system:x.service") -> (["systemctl"], "x.service"); user units by default."""
+    if unit.startswith("system:"):
+        return ["systemctl"], unit.split(":", 1)[1]
+    return ["systemctl", "--user"], unit
+
+
+def show(base, unit, props):
+    out = sh(*base, "show", unit, "--timestamp=unix", "-p", ",".join(props))
+    return dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+
+
+def unit_level(kind, p, svc):
+    """A timer is well when it is armed and its last run succeeded; a service when it runs (or, for
+    a oneshot, when its last run succeeded)."""
+    if kind == "timer":
+        if p.get("ActiveState") != "active":
+            return "bad", p.get("ActiveState", "unknown")
+        if svc.get("Result", "success") != "success":
+            return "bad", f"last run: {svc['Result']}"
+        return "ok", ""
+    state = p.get("ActiveState", "unknown")
+    if state == "active":
+        return "ok", p.get("SubState", "")
+    if state in ("activating", "reloading", "deactivating"):
+        return "warn", state
+    if state == "inactive" and p.get("Type") == "oneshot" and p.get("Result") == "success":
+        return "ok", "done"
+    return "bad", state if p.get("Result") in (None, "success") else f"{state} ({p['Result']})"
+
+
+def stamp(value):
+    """`show --timestamp=unix` gives "@1761556800"; empty or 0 means never."""
+    try:
+        return int(value.lstrip("@")) if value and value.lstrip("@") not in ("", "0") else 0
+    except ValueError:
+        return 0
+
+
+@functools.lru_cache(maxsize=2)
+def timers(base):
+    """Last and next run of every timer, in epoch microseconds (`show` prints these as local text)."""
+    try:
+        return json.loads(sh(*base, "list-timers", "--all", "-o", "json") or "[]")
+    except ValueError:
+        return []
+
+
+def unit(name, now):
+    base, real = unit_cmd(name)
+    kind = real.rsplit(".", 1)[-1]
+    p = show(base, real, ["ActiveState", "SubState", "Result", "Type", "Unit", "ActiveEnterTimestamp", "LoadState"])
+    if p.get("LoadState") == "not-found":
+        return {"name": name, "kind": kind, "level": "bad", "why": "not found"}
+    svc = show(base, p["Unit"], ["Result"]) if kind == "timer" and p.get("Unit") else {}
+    level, why = unit_level(kind, p, svc)
+    if kind == "timer" and level == "ok":
+        t = next((t for t in timers(tuple(base)) if t.get("unit") == real), {})
+        last, nxt = (t.get("last") or 0) / 1e6, (t.get("next") or 0) / 1e6
+        why = " · ".join(x for x in (f"{span(now - last)} ago" if last else "never ran",
+                                     f"next {span(nxt - now)}" if nxt > now else "") if x)
+    elif kind == "service" and level == "ok" and p.get("SubState") == "running":
+        since = stamp(p.get("ActiveEnterTimestamp"))
+        why = f"up {span(now - since)}" if since else "running"
+    return {"name": name, "kind": kind, "level": level, "why": why, "service": p.get("Unit", "")}
+
+
+def failed_user_units():
+    return [line.split()[0] for line in sh("systemctl", "--user", "list-units", "--failed", "--plain",
+                                           "--no-legend").splitlines() if line.strip()]
+
+
+# ---------------------------------------------------------------- endpoints
+def probe(ep):
+    start = time.monotonic()
+    req = urllib.request.Request(ep["url"], headers={"User-Agent": "shoji-homelab"})
+    try:
+        with urllib.request.urlopen(req, timeout=ep.get("timeout", 6)) as r:
+            code = r.status
+    except urllib.error.HTTPError as e:
+        code = e.code
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        reason = getattr(e, "reason", e)
+        return {"name": ep["name"], "url": ep["url"], "code": 0, "ms": 0, "level": "bad",
+                "why": str(reason)[:60] or "unreachable"}
+    ms = round((time.monotonic() - start) * 1000)
+    level = "bad" if code >= 500 else "warn" if ms > SLOW_MS else "ok"
+    return {"name": ep["name"], "url": ep["url"], "code": code, "ms": ms, "level": level, "why": f"{code} · {ms} ms"}
+
+
+# ---------------------------------------------------------------- host + backups
+def meminfo():
+    info = dict(line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines())
+    kb = lambda k: int(info[k].split()[0])
+    mem = round(100 * (1 - kb("MemAvailable") / kb("MemTotal")))
+    swap = round(100 * (1 - kb("SwapFree") / kb("SwapTotal"))) if kb("SwapTotal") else 0
+    return mem, swap
+
+
+def host(disks):
+    items = []
+    for path in disks:
+        try:
+            u = shutil.disk_usage(path)
+        except OSError:
+            items.append({"name": path, "kind": "disk", "pct": None, "level": "bad", "why": "missing"})
+            continue
+        pct = round(100 * u.used / u.total)
+        items.append({"name": path, "kind": "disk", "pct": pct, "free_gb": u.free // 2**30,
+                      "level": "bad" if pct >= DISK_BAD else "warn" if pct >= DISK_WARN else "ok",
+                      "why": f"{pct}% · {u.free // 2**30} GB free"})
+    mem, swap = meminfo()
+    items.append({"name": "memory", "kind": "mem", "pct": mem, "level": "warn" if mem >= 90 else "ok", "why": f"{mem}%"})
+    items.append({"name": "swap", "kind": "swap", "pct": swap, "level": "warn" if swap >= 90 else "ok", "why": f"{swap}%"})
+    load = os.getloadavg()[0]
+    items.append({"name": "load", "kind": "load", "pct": round(100 * load / (os.cpu_count() or 1)), "level": "ok",
+                  "why": f"{load:.2f}"})
+    return items
+
+
+def backup(b, now):
+    path = Path(b["path"]).expanduser()
+    files = [f for f in path.glob(b.get("glob", "*"))] if path.is_dir() else [path] if path.exists() else []
+    times = []
+    for f in files:
+        try:
+            times.append(f.stat().st_mtime)   # follows the "latest" symlinks backup tools leave
+        except OSError:
+            pass
+    max_h = b.get("max_age_h", 26)
+    if not times:
+        return {"name": b["name"], "age": None, "level": "bad", "why": "no backup found"}
+    age = now - max(times)
+    return {"name": b["name"], "age": age, "level": "bad" if age > max_h * 3600 else "ok", "why": f"{span(age)} ago"}
+
+
+# ---------------------------------------------------------------- collect
+def problems(data):
+    out = []
+    for kind, items in (("container", data["containers"]), ("unit", data["units"]), ("endpoint", data["endpoints"]),
+                        ("host", data["host"]), ("backup", data["backups"])):
+        out += [{"key": f"{kind}:{i['name']}", "kind": kind, "name": i["name"], "level": i["level"], "why": i["why"]}
+                for i in items if i["level"] != "ok"]
+    return sorted(out, key=lambda p: (p["level"] != "bad", p["key"]))
+
+
+def changes(old, new):
+    """(went down, came back) between two collections; nothing on the first one."""
+    if not old:
+        return [], []
+    bad = lambda d: {p["key"]: p for p in d.get("problems", []) if p["level"] == "bad"}
+    before, now = bad(old), bad(new)
+    return [now[k] for k in sorted(now.keys() - before.keys())], [before[k] for k in sorted(before.keys() - now.keys())]
+
+
+def collect(cfg, with_stats=False):
+    now = time.time()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        probes = [pool.submit(probe, ep) for ep in cfg.get("endpoints", [])]
+        units = [pool.submit(unit, u, now) for u in cfg.get("units", [])]
+        cs = pool.submit(containers, set(cfg.get("ignore", [])), now)
+        st = pool.submit(stats) if with_stats else None
+        data = {"at": now, "containers": cs.result(), "units": [u.result() for u in units],
+                "endpoints": [p.result() for p in probes], "host": host(cfg.get("disks", ["/"])),
+                "backups": [backup(b, now) for b in cfg.get("backups", [])]}
+        if st:
+            per = st.result()
+            for c in data["containers"]:
+                c.update(per.get(c["name"], {}))
+    listed = {u["name"] for u in data["units"]}
+    for name in failed_user_units():
+        if name not in listed:
+            data["units"].append({"name": name, "kind": name.rsplit(".", 1)[-1], "level": "bad", "why": "failed"})
+    data["problems"] = problems(data)
+    return data
+
+
+def save(data):
+    tmp = CACHE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data))
+    tmp.replace(CACHE)   # the popover may be reading it
+
+
+def notify(went_down, came_back):
+    for p in went_down:
+        subprocess.run(["notify-send", "-a", "Homelab", "-i", "network-server", f"{p['name']} is down", p["why"]])
+    for p in came_back:
+        subprocess.run(["notify-send", "-a", "Homelab", "-u", "low", "-i", "network-server", f"{p['name']} is back"])
+
+
+def refresh(cfg, with_stats=False):
+    with open(LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        old = read_cache()
+        data = collect(cfg, with_stats)
+        save(data)
+    notify(*changes(old, data))
+    return data
+
+
+# ---------------------------------------------------------------- bar
+def lucide(name):
+    info = json.loads((Path.home() / ".local/share/fonts/Shoji/lucide-info.json").read_text())
+    return chr(int(info[name]["encodedCode"].lstrip("\\"), 16))
+
+
+def tooltip(data):
+    cs = data["containers"]
+    bad = [p for p in data["problems"] if p["level"] != "ok"]
+    lines = [f"Homelab · {sum(c['state'] == 'running' for c in cs)}/{len(cs)} containers running"]
+    lines += [f"{'●' if p['level'] == 'bad' else '○'} {p['name']} · {p['why']}" for p in bad[:8]]
+    lines.append("Click: details · Right-click: check now")
+    return html.escape("\n".join(lines))
+
+
+def bar(data, stale=False):
+    """The glyph, always there once set up (it is the way in); muted while all is well."""
+    if data is None:
+        return {"text": "", "class": "off"}
+    levels = {p["level"] for p in data["problems"]}
+    cls = "down" if "bad" in levels else "warn" if "warn" in levels or stale else "ok"
+    tip = tooltip(data) + ("\nThe last check failed: showing older results" if stale else "")
+    return {"text": lucide("server"), "tooltip": tip, "class": cls}
+
+
+def count(data):
+    """The number down, its own waybar module: one font per label keeps both on the bar's centre."""
+    bad = sum(p["level"] == "bad" for p in data["problems"]) if data else 0
+    if not bad:
+        return {"text": "", "class": "ok"}
+    return {"text": str(bad), "tooltip": tooltip(data), "class": "down"}
+
+
+# ---------------------------------------------------------------- actions
+def ignore(name):
+    """Mark a container as expected to be stopped: it leaves the problems (and the red chip)."""
+    cfg = config() or {}
+    if name not in cfg.setdefault("ignore", []):
+        cfg["ignore"].append(name)
+        CONFIG.write_text(json.dumps(cfg, indent=1) + "\n")
+
+
+def do(action, kind, name):
+    if action == "ignore":
+        ignore(name)
+        refresh(config() or {})
+        subprocess.run(["pkill", f"-RTMIN+{SIGNAL}", "-x", "waybar"])
+        return
+    cfg = config() or {}
+    data = read_cache() or {"containers": [], "units": []}
+    if kind == "stack":
+        names = [c["name"] for c in data["containers"] if c["stack"] == name]
+    if action == "logs":
+        q = shlex.quote(name)
+        if kind == "container":
+            cmd = f"docker logs -f --tail 200 {q}"
+        elif kind == "stack":
+            cmd = "docker logs -f --tail 50 " + " ".join(map(shlex.quote, names)) if len(names) == 1 else \
+                  f"docker compose -p {q} logs -f --tail 50"
+        else:
+            base, real = unit_cmd(name)
+            target = next((u.get("service") for u in data["units"] if u["name"] == name and u.get("service")), real)
+            cmd = f"journalctl {'--user ' if '--user' in base else ''}-u {shlex.quote(target)} -f -n 200"
+        subprocess.Popen([*TERMINAL, f"--title=logs · {name}", "-e", "sh", "-c", cmd],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return
+    if kind == "container":
+        sh("docker", action, name, timeout=60)
+    elif kind == "stack" and names:
+        sh("docker", action, *names, timeout=120)
+    elif kind == "unit":
+        base, real = unit_cmd(name)
+        if action == "run":   # a timer's job, now
+            svc = show(base, real, ["Unit"]).get("Unit", real)
+            sh(*base, "start", "--no-block", svc)
+        else:
+            sh(*base, action, real, timeout=60)
+    refresh(cfg)
+    subprocess.run(["pkill", f"-RTMIN+{SIGNAL}", "-x", "waybar"])
+
+
+def init():
+    if CONFIG.exists():
+        print(f"{CONFIG} exists; edit it by hand")
+        return
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG.write_text(json.dumps({"endpoints": [], "units": [], "disks": ["/"], "backups": [], "ignore": []},
+                                 indent=1) + "\n")
+    print(f"wrote {CONFIG}: add endpoints, units, disks and backups, then the bar shows it within 30 s")
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else "bar"
+    cfg = config()
+    if cmd == "init":
+        init()
+    elif cmd == "do" and len(argv) == 5:
+        do(*argv[2:5])
+    elif cmd == "collect":
+        print(json.dumps(refresh(cfg, "--stats" in argv) if cfg is not None else None))
+    elif cmd == "bar":
+        stale = False
+        try:
+            data = refresh(cfg) if cfg is not None else None
+        except Exception:   # docker or systemd hung: keep the glyph, say the results are old
+            data, stale = read_cache(), True
+        print(json.dumps(bar(data, stale), ensure_ascii=False), flush=True)
+        subprocess.run(["pkill", f"-RTMIN+{SIGNAL + 1}", "-x", "waybar"])   # the count follows
+    elif cmd == "count":
+        print(json.dumps(count(read_cache() if cfg is not None else None), ensure_ascii=False))
+    else:
+        print(__doc__, file=sys.stderr)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main(sys.argv)

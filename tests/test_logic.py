@@ -450,7 +450,338 @@ class EyeRest(unittest.TestCase):
         self.assertFalse(self.make(on=False).due(30 * 60))
 
 
+class Homelab(unittest.TestCase):
+    def setUp(self):
+        self.hl = load("shoji-homelab")
+
+    def test_a_container_is_well_only_running_and_not_unhealthy(self):
+        lvl = lambda state, health="": self.hl.container_level({"state": state, "health": health})
+        self.assertEqual([lvl("running"), lvl("running", "healthy"), lvl("running", "starting"),
+                          lvl("running", "unhealthy"), lvl("paused"), lvl("exited"), lvl("restarting")],
+                         ["ok", "ok", "warn", "bad", "warn", "bad", "bad"])
+
+    def test_units(self):
+        lvl = self.hl.unit_level
+        self.assertEqual(lvl("timer", {"ActiveState": "active"}, {"Result": "success"})[0], "ok")
+        self.assertEqual(lvl("timer", {"ActiveState": "active"}, {"Result": "exit-code"}),
+                         ("bad", "last run: exit-code"))
+        self.assertEqual(lvl("timer", {"ActiveState": "inactive"}, {})[0], "bad")
+        self.assertEqual(lvl("service", {"ActiveState": "active", "SubState": "running"}, {})[0], "ok")
+        self.assertEqual(lvl("service", {"ActiveState": "inactive", "Type": "oneshot", "Result": "success"}, {})[0], "ok")
+        self.assertEqual(lvl("service", {"ActiveState": "inactive", "Type": "simple", "Result": "success"}, {})[0], "bad")
+        self.assertEqual(lvl("service", {"ActiveState": "failed", "Result": "exit-code"}, {}),
+                         ("bad", "failed (exit-code)"))
+        self.assertEqual(self.hl.unit_cmd("system:docker.service"), (["systemctl"], "docker.service"))
+
+    def test_changes_notify_only_the_difference(self):
+        p = lambda key, level="bad": {"key": key, "level": level, "name": key, "why": ""}
+        old = {"problems": [p("container:a"), p("unit:b"), p("host:swap", "warn")]}
+        new = {"problems": [p("unit:b"), p("endpoint:c")]}
+        down, back = self.hl.changes(old, new)
+        self.assertEqual(([x["key"] for x in down], [x["key"] for x in back]), (["endpoint:c"], ["container:a"]))
+        self.assertEqual(self.hl.changes(None, new), ([], []))   # the first collection says nothing
+
+    def test_the_bar_stays_quiet_until_something_is_down(self):
+        self.hl.lucide = lambda name: "S"
+        base = {"containers": [{"state": "running"}, {"state": "exited"}], "problems": []}
+        self.assertEqual(self.hl.bar(None)["text"], "")   # not set up: waybar hides the module
+        self.assertEqual((self.hl.bar(base)["text"], self.hl.bar(base)["class"]), ("S", "ok"))   # the way in stays
+        self.assertEqual(self.hl.count(base)["text"], "")
+        self.assertEqual(self.hl.bar(base, stale=True)["class"], "warn")
+        warn = dict(base, problems=[{"level": "warn", "name": "swap", "why": "95%"}])
+        self.assertEqual((self.hl.bar(warn)["class"], self.hl.count(warn)["text"]), ("warn", ""))
+        down = dict(base, problems=[{"level": "bad", "name": "a<b", "why": "exited"}])
+        self.assertEqual((self.hl.bar(down)["text"], self.hl.bar(down)["class"]), ("S", "down"))
+        self.assertEqual(self.hl.count(down)["text"], "1")   # its own label: one font, one centre
+        self.assertIn("a&lt;b", self.hl.bar(down)["tooltip"])   # waybar reads the tooltip as markup
+        self.assertIn("1/2 containers", self.hl.bar(down)["tooltip"])
+
+    def test_span_and_docker_time(self):
+        self.assertEqual([self.hl.span(s) for s in (5, 120, 7200, 3 * 86400)], ["5s", "2m", "2h", "3d"])
+        self.assertEqual(self.hl.epoch("0001-01-01T00:00:00Z"), 0)
+        self.assertEqual(self.hl.epoch("2026-10-27T00:00:00.123456789Z"), 1793059200)
+
+    def test_backup_age(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self.hl.backup({"name": "db", "path": d}, 0)["level"], "bad")   # nothing there
+            f = Path(d) / "db.sql.gz"
+            f.write_text("x")
+            mtime = f.stat().st_mtime
+            self.assertEqual(self.hl.backup({"name": "db", "path": d}, mtime + 3600)["level"], "ok")
+            self.assertEqual(self.hl.backup({"name": "db", "path": d, "max_age_h": 1}, mtime + 7200)["level"], "bad")
+
+
+class Plugins(unittest.TestCase):
+    def test_your_own_popovers_load_and_a_broken_one_is_skipped(self):
+        from shoji_widgets import popovers
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "mine.py").write_text(
+                "from shoji_widgets.popovers import *\n"
+                "class Mine(Listing):\n    name = 'mine'\n    def build(self):\n"
+                "        self.header('Mine')\n"
+                "        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)\n"
+                "        self.line(body, 'bad', 'thing', 'down', [('rotate-cw', 'Restart', lambda: None)])\n"
+                "        self.scrolled(body)\n"
+                "POPOVERS = [Mine]\n")
+            (Path(d) / "broken.py").write_text("raise RuntimeError('nope')\n")
+            old, popovers.PLUGINS = popovers.PLUGINS, Path(d)
+            try:
+                pops = popovers.Popovers()
+            finally:
+                popovers.PLUGINS = old
+        self.assertIn("mine", pops.items)
+        self.assertIn("homelab", pops.items)   # the plugin adds, never replaces the rest
+        mine = pops.items["mine"]
+        mine.clear()
+        mine.build()
+        from shoji_widgets.base import name_icons
+        self.assertEqual(name_icons(mine.box), [])
+
+
+class Drawer(unittest.TestCase):
+    def make(self, pr):
+        from shoji_widgets import drawer, popovers
+        from gi.repository import Gtk
+        drawer.prefs = lambda: pr
+        drawer.save_prefs = lambda **kw: pr.update(kw)
+
+        class Small(drawer.Card):
+            size = "small"
+
+        cards = [type(f"C{n}", (Small,), {"name": n, "size": size})
+                 for n, size in (("a", "small"), ("wide", "medium"), ("b", "small"), ("c", "small"))]
+
+        class M:
+            open = None
+
+        d = drawer.Drawer(M(), cards)
+        d.win.get_visible = lambda: False   # no rebuild from move()/hide_card() in a test
+        return d, Gtk
+
+    def test_order_and_hidden_come_from_prefs(self):
+        pr = {"drawer_order": ["c", "a"], "drawer_hidden": ["b"]}
+        d, _ = self.make(pr)
+        shown, hidden = d.ordered()
+        self.assertEqual(([c.name for c in shown], [c.name for c in hidden]), (["c", "a", "wide"], ["b"]))
+        d.move(shown[1], -1)
+        self.assertEqual(pr["drawer_order"][:3], ["a", "c", "wide"])
+        d.hide_card(hidden[0], hide=False)
+        self.assertEqual(pr["drawer_hidden"], [])
+
+    def test_sizes_come_from_prefs_within_what_a_card_offers(self):
+        pr = {"drawer_sizes": {"a": "medium", "b": "large", "wide": "small"}}
+        d, _ = self.make(pr)
+        for c in d.cards:
+            c.sizes = ("small", "medium")
+        shown, _ = d.ordered()
+        self.assertEqual({c.name: c.size for c in shown},
+                         {"a": "medium", "b": "small", "wide": "small", "c": "small"})   # b cannot be large
+        d.resize(shown[0], "small")
+        self.assertEqual(pr["drawer_sizes"]["a"], "small")
+
+    def test_drop_puts_a_card_before_or_after_another(self):
+        pr = {"drawer_order": ["a", "wide", "b", "c"]}
+        d, _ = self.make(pr)
+        d.place("c", "a")
+        self.assertEqual(pr["drawer_order"][:4], ["c", "a", "wide", "b"])
+        d.place("c", "b", after=True)
+        self.assertEqual(pr["drawer_order"][:4], ["a", "wide", "b", "c"])
+        d.place("a", "a")   # onto itself: nothing moves
+        self.assertEqual(pr["drawer_order"][:4], ["a", "wide", "b", "c"])
+
+    def test_click_then_click_moves_without_dragging(self):
+        pr = {"drawer_order": ["a", "wide", "b", "c"]}
+        d, _ = self.make(pr)
+        cards = {c.name: c for c in d.cards}
+        d.editing = True
+        d.pick(cards["c"])
+        self.assertEqual(d.picked, "c")
+        d.pick(cards["a"])
+        self.assertEqual((d.picked, pr["drawer_order"][:2]), (None, ["c", "a"]))
+
+    def test_a_small_card_fills_the_half_row_left_before_a_wide_one(self):
+        d, Gtk = self.make({})
+        d.clear()
+        d.build()
+        body = d.scroll.get_child().get_child()   # ScrolledWindow > Viewport > Box
+        rows = [len(r.get_children()) if isinstance(r, Gtk.Box) and r.get_orientation() == Gtk.Orientation.HORIZONTAL
+                else "wide" for r in body.get_children()]
+        self.assertEqual(rows, [2, "wide", 1])   # a+b, the wide card, c
+
+
+class Vpn(unittest.TestCase):
+    def test_lists_nm_vpns_and_tailscale(self):
+        from shoji_widgets import popovers
+        out = {("nmcli",): "Office\\: AWS:1111:vpn:no\nHome wifi:2222:802-11-wireless:yes\nwg0:3333:wireguard:yes\n",
+               ("tailscale",): '{"BackendState": "Stopped"}'}
+        old_sh, old_which = popovers.sh, popovers.shutil.which
+        popovers.sh = lambda *cmd: out[(cmd[0],)]
+        popovers.shutil.which = lambda name: "/usr/bin/" + name
+        try:
+            vpns = popovers.Vpn.all()
+        finally:
+            popovers.sh, popovers.shutil.which = old_sh, old_which
+        self.assertEqual([(v["name"], v["kind"], v["on"]) for v in vpns],
+                         [("Office: AWS", "nm", False), ("wg0", "nm", True), ("Tailscale", "tailscale", False)])
+
+
+class Outcomes(unittest.TestCase):
+    """A row says what happened to it; an action on many asks twice; Esc goes back to the drawer."""
+
+    def make(self):
+        from shoji_widgets import popovers
+
+        class L(popovers.Listing):
+            name = "l"
+
+            def build(self):
+                pass
+
+        class M:
+            open = None
+        lst = L(M())
+        lst.refresh_once = lambda: False
+        return lst, popovers
+
+    def test_status_meta(self):
+        lst, _ = self.make()
+        self.assertEqual(lst.status("k", "up 2h"), ("up 2h", None))
+        lst.busy.add("k")
+        self.assertEqual(lst.status("k")[0], "working…")
+        lst.busy.clear()
+        lst.outcome["k"] = (False, "Error: no such container")
+        self.assertEqual(lst.status("k"), ("✗ Error: no such container", "bad"))
+        lst.outcome["k"] = (True, "")
+        self.assertEqual(lst.status("k")[0], "✓ done")
+
+    def test_confirm_runs_on_the_second_click_only(self):
+        lst, _ = self.make()
+        ran = []
+        lst.confirm("all", lambda: ran.append(1))
+        self.assertEqual((ran, lst.status("all")[1]), ([], "warn"))
+        lst.confirm("all", lambda: ran.append(1))
+        self.assertEqual(ran, [1])
+        self.assertNotIn("all", lst.armed)
+
+    def test_background_keeps_the_exit_status(self):
+        import time as _t
+        from gi.repository import GLib
+        lst, _ = self.make()
+        lst.background(["sh", "-c", "echo boom >&2; exit 3"], key="x")
+        ctx = GLib.MainContext.default()
+        end = _t.time() + 5
+        while "x" not in lst.outcome and _t.time() < end:
+            ctx.iteration(False)
+            _t.sleep(0.02)
+        self.assertEqual(lst.outcome.get("x"), (False, "boom"))
+
+    def test_escape_returns_to_where_it_came_from(self):
+        _, popovers = self.make()
+        mgr = popovers.Popovers.__new__(popovers.Popovers)
+        opened = []
+
+        class P:
+            def show(self):
+                pass
+
+            def hide(self):
+                pass
+
+        mgr.items = {"drawer": P(), "homelab": P()}
+        mgr.backdrop = type("B", (), {"win": type("W", (), {"show": lambda s: None, "hide": lambda s: None})()})()
+        mgr.open, mgr.back = None, None
+        mgr.toggle("homelab", back="drawer")
+        mgr.escape()
+        self.assertEqual((mgr.open, mgr.back), ("drawer", None))
+        mgr.escape()
+        self.assertIsNone(mgr.open)
+
+
+class Rest(unittest.TestCase):
+    """休 one suggestion per rest, fitting the moment."""
+
+    def setUp(self):
+        import random
+        from shoji_widgets import rest
+        self.rest, self.random = rest, random
+        self.tmp = tempfile.TemporaryDirectory()
+        rest.LOG = Path(self.tmp.name) / "rest.log"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def pick(self, minutes=5, hour=14, weather="晴", meeting=None, last=None, seed=1):
+        now = datetime.datetime(2026, 10, 27, hour, 0)
+        return self.rest.pick(minutes, now=now, last=last, ctx={"weather": weather, "meeting": meeting},
+                              rng=self.random.Random(seed))
+
+    def ids(self, **kw):
+        return {self.pick(seed=n, **kw)["id"] for n in range(300)}
+
+    def test_a_meeting_about_to_start_comes_first(self):
+        s = self.pick(meeting={"when": "14:10", "title": "Standup"})
+        self.assertEqual((s["id"], s["title"]), ("prep", "Before Standup"))
+        self.assertNotEqual(self.pick(meeting={"when": "14:10", "title": "x"}, last="prep")["id"], "prep")
+
+    def test_it_fits_the_minutes_the_hour_and_the_weather(self):
+        short = self.ids(minutes=2)
+        self.assertFalse(short & {"walk", "meal", "tea", "outside"})   # they need more than 2 minutes
+        self.assertNotIn("tea", self.ids(hour=21))                       # no caffeine at night
+        self.assertNotIn("outside", self.ids(weather="雨"))              # not into the rain
+        self.assertNotIn("outside", self.ids(hour=22))                   # nor into the dark
+        long_ = [self.pick(minutes=15, seed=n)["id"] for n in range(300)]
+        self.assertGreater(sum(i in ("meal", "longwalk", "floor") for i in long_), 150)   # a long rest, long things
+
+    def test_never_twice_in_a_row(self):
+        self.assertNotIn("box", self.ids(last="box"))
+
+    def test_what_you_skip_comes_up_less(self):
+        base = [self.pick(seed=n)["cat"] for n in range(600)].count("body")
+        for _ in range(8):
+            self.rest.log("neck", "skip", now=datetime.datetime(2026, 10, 26, 10, 0))
+        after = [self.pick(seed=n)["cat"] for n in range(600)].count("body")
+        self.assertLess(after, base * 0.6)
+        self.rest.log("box", "done", now=datetime.datetime(2026, 10, 27, 9, 0))
+        self.assertEqual(self.rest.taken_today(now=datetime.datetime(2026, 10, 27, 12, 0)), 1)
+
+    def test_every_suggestion_speaks_every_language(self):
+        for sid, _cat, _need, _conds, text in self.rest.CATALOG:
+            self.assertEqual(set(text), {"en", "id", "ja"}, sid)
+
+    def test_breathing_phases(self):
+        from shoji_widgets.restcard import RestCard
+        card = RestCard.__new__(RestCard)
+        self.assertEqual(card.phase(0)[0], "in")
+        self.assertAlmostEqual(card.phase(2)[2], 0.5)       # half way in, half open
+        self.assertEqual(card.phase(5)[:2], ("hold", 3))
+        self.assertEqual(card.phase(10)[0], "out")
+        self.assertEqual(card.phase(16)[0], "in")           # round again
+
+
+class ZazenLengths(unittest.TestCase):
+    def test_prefs_and_the_long_rest(self):
+        z = load("shoji-zazen")
+        with tempfile.TemporaryDirectory() as d:
+            z.PREFS = Path(d) / "prefs.json"
+            self.assertEqual(z.lengths(), (25, 5, 15))
+            z.PREFS.write_text('{"zazen": "50/10", "zazen_long": 20}')
+            self.assertEqual(z.lengths(), (50, 10, 20))
+            self.assertEqual([z.rest_minutes(n) for n in (1, 3, 4, 8)], [10, 10, 20, 20])
+            z.PREFS.write_text('{"zazen": "50/10", "zazen_long": 0}')
+            self.assertEqual(z.rest_minutes(4), 10)
+
+
 class Css(unittest.TestCase):
+    def test_the_stylesheet_parses(self):
+        """One unclosed comment makes GTK drop rules from there on; every surface would lose its look."""
+        from shoji_widgets import base
+        from gi.repository import Gtk, GLib
+        colors = base.COLORS.read_bytes() if base.COLORS.exists() else b""
+        try:
+            Gtk.CssProvider().load_from_data(colors + base.CSS)
+        except GLib.Error as e:
+            self.fail(f"CSS: {e}")
+
     def test_letter_spacing_stays_under_one_pixel(self):
         """From 1px, GTK 3 doubles a label's height in an on-screen window (not offscreen, so no
         rendering test sees it): the cards' text sat 8 px low."""

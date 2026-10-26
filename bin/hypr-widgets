@@ -33,10 +33,11 @@ from shoji_widgets.base import *  # noqa: E402,F401,F403
 from shoji_widgets.koyomi import *  # noqa: E402,F401,F403
 from shoji_widgets.popovers import *  # noqa: E402,F401,F403
 from shoji_widgets.overlays import *  # noqa: E402,F401,F403
+from shoji_widgets.restcard import RestCard  # noqa: E402
 
 
 # ---------------------------------------------------------------- wiring
-def watch_fifo(osd, pops, zazen, shot):
+def watch_fifo(osd, pops, zazen, shot, rest_card):
     if FIFO.exists() and not FIFO.is_fifo():
         FIFO.unlink()
     if not FIFO.exists():
@@ -66,6 +67,8 @@ def watch_fifo(osd, pops, zazen, shot):
                 shot.show(parts[1])
             elif len(parts) == 2 and parts[0] == "zazen":
                 zazen.start() if parts[1] == "start" else zazen.stop()
+            elif len(parts) == 2 and parts[0] == "rest":   # 休 the rest card (shoji-zazen)
+                rest_card.show() if parts[1] == "show" else rest_card.hide()
             elif len(parts) == 4 and parts[2].isdigit():
                 osd_line = parts
         if osd_line:  # only the newest level matters when the knob spins fast
@@ -171,7 +174,7 @@ def main():
                                              Gtk.STYLE_PROVIDER_PRIORITY_USER)
     load_css()
     pops = Popovers()
-    watch_fifo(Osd(), pops, Zazen(), ShotCard())
+    watch_fifo(Osd(), pops, Zazen(), ShotCard(), RestCard())
     watch_swaync(Calendar())
     today = TodayCache()
     meetings = Meetings(today)

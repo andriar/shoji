@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""A lock beside the network icon while a VPN carries your traffic (waybar custom/vpn).
+
+Kanso, like the other indicators: nothing while no VPN is on. NetworkManager VPNs (OpenVPN,
+WireGuard, …) count; Tailscale counts only while it routes through an exit node — a tailnet that
+is always up (a server's) would leave the lock on for nothing. The tooltip names every VPN that is
+up, Tailscale included. Click: the Network popover, whose VPN switches turn them on and off.
+"""
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+NM_TYPES = ("vpn", "wireguard")
+
+
+def sh(*cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=4).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def active():
+    """(VPNs that carry traffic, every VPN that is up) as names."""
+    carry, up = [], []
+    for line in sh("nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active").splitlines():
+        name, _, kind = line.rpartition(":")
+        if kind in NM_TYPES:
+            carry.append(name.replace("\\:", ":"))
+    up += carry
+    if shutil.which("tailscale"):
+        try:
+            st = json.loads(sh("tailscale", "status", "--json") or "{}")
+        except ValueError:
+            st = {}
+        if st.get("BackendState") == "Running":
+            exit_node = st.get("ExitNodeStatus")
+            up.append("Tailscale" + (" (exit node)" if exit_node else ""))
+            if exit_node:
+                carry.append("Tailscale")
+    return carry, up
+
+
+def lucide(name):
+    info = json.loads((Path.home() / ".local/share/fonts/Shoji/lucide-info.json").read_text())
+    return chr(int(info[name]["encodedCode"].lstrip("\\"), 16))
+
+
+def bar(carry, up):
+    if not carry:
+        return {"text": "", "class": "off", "tooltip": ""}
+    return {"text": lucide("lock"), "class": "on",
+            "tooltip": "VPN · " + " · ".join(up) + "\nClick: network and VPN switches"}
+
+
+if __name__ == "__main__":
+    print(json.dumps(bar(*active()), ensure_ascii=False))
