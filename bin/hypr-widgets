@@ -1253,8 +1253,12 @@ class Calendar:
         self.selected = today
         self.load()
         self.refresh_toggles()
-        # no output set: Hyprland puts the card on the focused monitor, where swaync opens too
-        Layer.set_margin(self.win, Layer.Edge.LEFT, max(0, self.focused_width() // 2 - self.WIDTH))
+        # no output set: Hyprland puts the card on the focused monitor, where swaync opens too. The
+        # card sits against the panel's left edge: swaync keeps one right margin on every monitor
+        # (set for the primary one by gen_swaync), so on a narrower or scaled screen the pair still
+        # touches instead of drifting apart around a centre line
+        Layer.set_margin(self.win, Layer.Edge.LEFT,
+                         max(0, self.focused_width() - self.panel_margin() - CC_WIDTH - self.WIDTH))
         self.win.show()
 
     def hide(self):
@@ -1281,6 +1285,13 @@ class Calendar:
         self.yw.set_text(kanji)
         self.yw.set_tooltip_text(tip)
         return False
+
+    @staticmethod
+    def panel_margin():
+        try:
+            return int(json.loads((HOME / ".config/swaync/config.json").read_text())["control-center-margin-right"])
+        except (OSError, ValueError, KeyError):
+            return 0
 
     @staticmethod
     def focused_width():
@@ -2157,6 +2168,10 @@ class Keys(Launcher):
             self.load_apps()
             self.fill_sheet()
         self.tsv_mtime = mtime
+        # 1480 px fits a 2560 screen; on a narrower or scaled one, fit the screen (long lines ellipsize)
+        fit = min(self.width, Calendar.focused_width() - 32)
+        self.box.set_size_request(fit, -1)
+        self.win.resize(fit, 1)
         super().show()
         self.apply_mode()
 
@@ -2511,12 +2526,31 @@ class NotifyFocus:
         if line is None:  # Hyprland went away
             return
         event, _, addr = line.partition(">>")
+        if event in ("focusedmon", "focusedmonv2"):
+            GLib.idle_add(fit_panel)
         if event == "screencast" and self.meetings:  # "1,0" sharing a monitor, "1,1" a window, "0,…" stopped
             self.meetings.set("screen", addr.startswith("1"))
         if event == "urgent" and time.monotonic() < self.armed:
             self.armed = 0
             sh("hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:0x{addr.removeprefix("0x")}" }})')
         stream.read_line_async(GLib.PRIORITY_DEFAULT, None, self.on_event)
+
+
+def fit_panel():
+    """swaync places its panel with one right margin for every monitor, so gen_swaync computes it
+    for the primary one. When focus moves to a monitor of another width, set the margin that centres
+    the Koyomi pair there and reload swaync's config (the panel is closed while focus moves)."""
+    cfg_path = HOME / ".config/swaync/config.json"
+    try:
+        cfg = json.loads(cfg_path.read_text())
+    except (OSError, ValueError):
+        return False
+    want = max(0, Calendar.focused_width() // 2 - CC_WIDTH)
+    if cfg.get("control-center-margin-right") != want:
+        cfg["control-center-margin-right"] = want
+        cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
+        spawn("swaync-client", "-R")
+    return False
 
 
 def watch_swaync(cal):

@@ -15,6 +15,10 @@ means "you are here" or "this is on".
 
 ## A tour
 
+In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session (17 s).
+
+![Shoji in motion: Koyomi fades in, the Media popover, the launcher searching, the volume ensō gliding, zazen dimming the screen](docs/screenshots/demo.gif)
+
 | Koyomi: calendar, agenda, toggles and notifications | The same panel on Hiru (washi) |
 |---|---|
 | ![Koyomi in the Aizome palette: calendar with today's agenda, quick toggles, notifications stacked per app](docs/screenshots/koyomi.png) | ![Koyomi in the light Hiru palette](docs/screenshots/koyomi-light.png) |
@@ -253,8 +257,9 @@ wallpaper sky and hills), then `shoji doctor <name>` to check contrast and `shoj
 
 Tested on Ubuntu 24.04 (Zorin OS 18) with Hyprland 0.56.2, waybar 0.14, swaync 0.9 and 0.11, and
 hyprlock 0.9.6, including a clean-home install inside a nested Hyprland (the screenshots come from
-one, with demo data). Not yet tested: Arch, swaync 0.12 (GTK4), multi-monitor, HiDPI scaling and real
-laptops. Issues and screenshots welcome.
+one, with demo data) and two monitors there, one at scale 2 (Koyomi and the swaync panel re-centre on
+whichever monitor has focus; wide sheets fit the screen). Not yet tested: Arch, swaync 0.12 (GTK4)
+and real laptops. Issues and screenshots welcome.
 
 ## License
 

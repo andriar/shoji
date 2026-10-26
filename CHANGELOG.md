@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 — 2026-10-26
+
+- Quiet in meetings: Silent turns itself on while a calendar event runs or the screen is shared,
+  and a reminder card with Join appears 10 minutes before an event.
+- Multi-monitor and HiDPI: Koyomi and the swaync panel re-centre on the focused monitor (hypr-widgets
+  updates swaync's margin when focus moves), the shortcuts sheet fits narrow or scaled screens.
+- README: a 17-second demo GIF.
+
 ## 0.3.0 — 2026-10-26
 
 - Koyomi shows the weather in one kanji beside the micro-season (霜始降 · 曇 31°), from Open-Meteo
