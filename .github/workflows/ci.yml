@@ -27,7 +27,7 @@ jobs:
       - name: Install the scripts the widgets load (shoji, audio-switch) and Lucide's glyph map
         run: |
           mkdir -p ~/.local/bin ~/.local/share/fonts/Shoji
-          install -m 755 bin/* ~/.local/bin/
+          for f in bin/*; do if [ -f "$f" ]; then install -m 755 "$f" ~/.local/bin/; fi; done
           curl -fsSL -o ~/.local/share/fonts/Shoji/lucide-info.json \
             https://cdn.jsdelivr.net/npm/lucide-static@0.460.0/font/info.json
       - name: Logic tests

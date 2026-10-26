@@ -246,7 +246,9 @@ class Calendar:
     WIDTH = CC_WIDTH
 
     def __init__(self):
-        self.win = layer_window("hypr-calendar", Layer.Layer.OVERLAY)
+        # keyboard on demand: a click gives Koyomi the keys (arrows, PgUp/PgDn, Home, Enter, Esc)
+        self.win = layer_window("hypr-calendar", Layer.Layer.OVERLAY, keyboard=True)
+        self.win.connect("key-press-event", self.on_key)
         Layer.set_anchor(self.win, Layer.Edge.TOP, True)
         Layer.set_anchor(self.win, Layer.Edge.LEFT, True)
         Layer.set_margin(self.win, Layer.Edge.TOP, GAP)
@@ -356,6 +358,23 @@ class Calendar:
             weeks = self.weeks()
             self.agenda.load(weeks[0][0], weeks[-1][-1])
         self.fill_agenda()
+
+    def on_key(self, _w, ev):
+        """← → a day, ↑ ↓ a week, PgUp/PgDn a month, Home today, Enter opens the day, Esc closes."""
+        step = {Gdk.KEY_Left: -1, Gdk.KEY_Right: 1, Gdk.KEY_Up: -7, Gdk.KEY_Down: 7}.get(ev.keyval)
+        if step:
+            self.pick(self.selected + datetime.timedelta(days=step))
+        elif ev.keyval in (Gdk.KEY_Page_Up, Gdk.KEY_Page_Down):
+            self.shift(-1 if ev.keyval == Gdk.KEY_Page_Up else 1)
+        elif ev.keyval == Gdk.KEY_Home:
+            self.pick(datetime.date.today())
+        elif ev.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            self.open_day()
+        elif ev.keyval == Gdk.KEY_Escape:
+            spawn("swaync-client", "-cp")
+        else:
+            return False
+        return True
 
     def pick(self, d):
         self.fade = d != self.selected

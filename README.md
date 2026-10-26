@@ -231,6 +231,7 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 | `Super+Space` · `Super+/` | launcher · every shortcut (type to search) |
 | `Super+Enter` · `Super+E` | terminal (instant) · Thunar |
 | `Super+N` or click the clock | Koyomi: calendar, agenda, toggles, notifications |
+| in Koyomi (click it) | ← → day · ↑ ↓ week · PgUp/PgDn month · Home today · Enter open · Esc close |
 | `Super+Z` | zazen: 25 minutes of focus (again = stop) |
 | `Super+T` · `Super+[` / `]` | tab windows · previous / next tab |
 | `Super+Shift+T` | theme manager |

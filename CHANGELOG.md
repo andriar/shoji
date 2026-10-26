@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 — 2026-10-26
+
+- CI: script syntax and the logic tests on every push (badge in the README).
+- Koyomi by keyboard (click it first): arrows move the day, PgUp/PgDn the month, Home is today,
+  Enter opens the day, Esc closes the panel.
+- install.sh copies only files from bin/ (a bin/__pycache__ made it stop).
+
 ## 0.4.0 — 2026-10-26
 
 - Clipboard history popover (Super+Shift+V): search, copy back, delete an entry, clear all.
