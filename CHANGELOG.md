@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0 — 2026-10-26
+
+- 墨 Ink: an idle screen before the lock. The desktop sinks into the palette's ground and slow
+  ink drops bloom on it, with the time and the day's 候; hypridle starts and stops it
+  (`config/hypr/hypridle.conf`). Reduced motion keeps it still; prefs `"ink": false` turns it off.
+- Koyomi and the popovers in Indonesian and Japanese: prefs `"lang"`, or the Language chip in the
+  theme manager. Dates follow (26 Oktober, 10月26日).
+- Sumi 墨 and Shiro 白: high-contrast palettes, every text pair at WCAG AAA.
+- `shoji greeter`: the login screen (greetd + ReGreet) in your palette. It only writes files in
+  your home and prints the root steps; switching display manager stays your call (docs/greeter.md).
+- Tested in an Arch container: the PKGBUILD builds and installs, `shoji-setup` and uninstall run.
+  Found there: uninstall left newer scripts behind (now every script in bin/ is covered).
+
 ## 0.4.1 — 2026-10-26
 
 - CI: script syntax and the logic tests on every push (badge in the README).

@@ -259,5 +259,31 @@ class Ink(unittest.TestCase):
             popen.assert_not_called()
 
 
+class Greeter(unittest.TestCase):
+    def test_files_parse(self):
+        import contextlib
+        import io
+        import subprocess
+        import tomllib
+        with tempfile.TemporaryDirectory() as d:
+            old, shoji.GREETER = shoji.GREETER, Path(d)
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    shoji.cmd_greeter()
+            finally:
+                shoji.GREETER = old
+            conf = tomllib.loads((Path(d) / "regreet.toml").read_text())
+            self.assertEqual(conf["background"]["path"], "/etc/greetd/shoji-background.png")
+            self.assertIn("regreet", tomllib.loads((Path(d) / "config.toml").read_text())["default_session"]["command"])
+            check = (  # GTK 4's own CSS parser, in its own process (these tests load GTK 3)
+                "import gi, sys; gi.require_version('Gtk', '4.0'); from gi.repository import Gtk\n"
+                "e = []; p = Gtk.CssProvider(); p.connect('parsing-error', lambda *a: e.append(a[2].message))\n"
+                "p.load_from_string(open(sys.argv[1]).read()); print('|'.join(e))")
+            r = subprocess.run([sys.executable, "-c", check, str(Path(d) / "regreet.css")], capture_output=True, text=True)
+            if r.returncode:
+                self.skipTest("GTK 4 is not installed")
+            self.assertEqual(r.stdout.strip(), "")
+
+
 if __name__ == "__main__":
     unittest.main()

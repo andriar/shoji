@@ -15,6 +15,7 @@ Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome
   moon          redraw the wallpaper with tonight's moon phase (dark palettes)
   senja         redraw it when the sky's dawn / sunset tint changes (夕暮れ; hypr-widgets runs it)
   greet         one line for a new terminal: today's 候 and what is next (prefs "greet": true)
+  greeter       the login screen (greetd + ReGreet) in this palette: files, then the steps
   season        the season for the seasonal accent: spring 紅梅 / summer 青竹 / autumn 紅葉 / winter 白群
   date-kanji    十月二十四日 · 土曜日   (lock screen)
   weekday-kanji 土                    (bar)
@@ -1327,6 +1328,81 @@ def cmd_doctor(name):
         print(f"  font    {f:<24} {'ok' if f in fonts else 'MISSING'}")
 
 
+GREETER = HOME / ".local/share/shoji/greeter"
+
+
+def cmd_greeter():
+    """Login screen (greetd + ReGreet) in the current palette. Writes files to GREETER only and
+    prints the steps that need root: nothing outside your home changes until you run them."""
+    import shutil
+    try:
+        live = json.loads((CFG / "shoji/current.json").read_text())   # with the seasonal accent
+        t, dark = live["tokens"], live["dark"]
+    except (OSError, ValueError, KeyError):
+        t, dark = tokens(current()), PALETTES[current()]["dark"]
+    GREETER.mkdir(parents=True, exist_ok=True)
+    (GREETER / "regreet.toml").write_text(f"""# ReGreet in Shoji's palette (shoji greeter). Goes to /etc/greetd/regreet.toml
+[background]
+path = "/etc/greetd/shoji-background.png"
+fit = "Cover"
+
+[GTK]
+application_prefer_dark_theme = {str(dark).lower()}
+font_name = "Zen Kaku Gothic New 13"
+icon_theme_name = "Papirus{'-Dark' if dark else ''}"
+theme_name = "Adwaita"
+
+[commands]
+reboot = ["systemctl", "reboot"]
+poweroff = ["systemctl", "poweroff"]
+
+[appearance]
+greeting_msg = "おかえり"
+
+[widget.clock]
+format = "%H:%M"
+""")
+    (GREETER / "regreet.css").write_text(f"""/* ReGreet in Shoji's palette (shoji greeter). Goes to /etc/greetd/regreet.css */
+* {{ font-family: "Zen Kaku Gothic New", sans-serif; }}
+window {{ background-color: {t["base"]}; color: {t["text"]}; }}
+frame, frame > border {{ background-color: alpha({t["base"]}, 0.86); border: 1px solid {t["surface1"]}; border-radius: 14px; }}
+label {{ color: {t["text"]}; }}
+label.dim-label, .dim-label {{ color: {t["muted"]}; }}
+entry, dropdown > button, combobox > box > button {{
+  background-color: {t["surface0"]}; color: {t["text"]};
+  border: 1px solid {t["surface1"]}; border-radius: 10px; box-shadow: none; caret-color: {t["accent"]};
+}}
+entry:focus-within {{ border-color: {t["accent"]}; outline: none; }}
+button {{ background-color: {t["surface0"]}; color: {t["text"]}; border: none; border-radius: 10px; box-shadow: none; }}
+button:hover {{ background-color: {t["surface1"]}; }}
+button.suggested-action {{ background-color: {t["accent"]}; color: {t["on_accent"]}; }}
+button.destructive-action {{ background-color: {t["alert"]}; color: {t["base"]}; }}
+infobar, .error {{ color: {t["alert"]}; }}
+""")
+    wall = WALLS / f"shoji-{current()}.png"
+    if wall.exists():
+        shutil.copyfile(wall, GREETER / "background.png")
+    (GREETER / "config.toml").write_text("""# greetd: ReGreet inside cage. Goes to /etc/greetd/config.toml
+# user: "greeter" on Arch, "_greetd" on Debian/Ubuntu (the user the greetd package made)
+[terminal]
+vt = 1
+
+[default_session]
+command = "dbus-run-session cage -s -mlast -d -- regreet"
+user = "greeter"
+""")
+    g = GREETER
+    print(f"""Wrote the login screen for {current()} to {g}
+
+1. Copy it into place (root; nothing changes at login yet):
+   sudo install -Dm644 {g}/regreet.toml {g}/regreet.css -t /etc/greetd/
+   sudo install -Dm644 {g}/background.png /etc/greetd/shoji-background.png
+   sudo install -d /usr/local/share/fonts/shoji && sudo cp {HOME}/.local/share/fonts/Shoji/*.ttf /usr/local/share/fonts/shoji/ && sudo fc-cache -f
+
+2. Only when you choose to switch the login screen: see docs/greeter.md. It needs greetd, cage
+   and regreet, and replaces your current display manager (with the way back written there).""")
+
+
 def main():
     args = sys.argv[1:] or ["status"]
     cmd = args[0]
@@ -1381,6 +1457,8 @@ def main():
             set_wallpaper(render_wallpaper(current()))
     elif cmd == "greet":
         cmd_greet()
+    elif cmd == "greeter":
+        cmd_greeter()
     elif cmd == "season":
         sid, kanji, colour = season()
         print(f"{sid} {kanji} {colour}")

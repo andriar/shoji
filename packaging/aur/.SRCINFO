@@ -1,6 +1,6 @@
 pkgbase = shoji-hyprland
 	pkgdesc = A calm, Japanese-inspired desktop for Hyprland: one palette for bar, panels, lock screen, terminal and apps
-	pkgver = 0.4.0
+	pkgver = 0.5.0
 	pkgrel = 1
 	url = https://github.com/andriar/shoji
 	arch = any
@@ -21,6 +21,7 @@ pkgbase = shoji-hyprland
 	depends = curl
 	depends = fontconfig
 	optdepends = playerctl: now playing on the bar
+	optdepends = hypridle: the ink screen when idle, then the lock
 	optdepends = evolution-data-server: Koyomi agenda, reminders, Silent in meetings
 	optdepends = gnome-calendar: open a day from Koyomi
 	optdepends = bluez-utils: Bluetooth popover and battery
@@ -42,7 +43,7 @@ pkgbase = shoji-hyprland
 	optdepends = qt6ct
 	optdepends = brightnessctl: laptops
 	optdepends = power-profiles-daemon: laptops
-	source = shoji-hyprland-0.4.0.tar.gz::https://github.com/andriar/shoji/archive/refs/tags/v0.4.0.tar.gz
+	source = shoji-hyprland-0.5.0.tar.gz::https://github.com/andriar/shoji/archive/refs/tags/v0.5.0.tar.gz
 	sha256sums = SKIP
 
 pkgname = shoji-hyprland

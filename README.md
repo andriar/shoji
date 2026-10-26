@@ -60,6 +60,9 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
 - **Zazen** (Super+Z): 25 minutes of focus. Silent, no bar, other windows dimmed, an ensō closes
   at the top. At the end everything comes back, you hear how many notifications waited, and a
   5-minute rest (休) follows; Koyomi counts the day's sessions (座 ×3).
+- **墨 Ink** when you step away: after 8 idle minutes the desktop sinks into the palette's ground
+  and slow drops of ink bloom on it, the time and the day's 候 in a corner; any input brings the
+  desktop back, the lock follows at 10 (`config/hypr/hypridle.conf`, `shoji-ink preview`).
 - **Ensō** for volume, mic and brightness, shown even with Do Not Disturb on.
 - **Rin (鈴)**: a small synthesised temple bell for critical notifications only.
 - **Quiet in meetings**: Silent turns itself on while a calendar event runs or the screen is shared,
@@ -96,8 +99,8 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
 the release to `~/shoji` and runs the installer, which backs up everything it replaces.
 
 ```sh
-curl -fsSLo /tmp/shoji-bootstrap.sh https://raw.githubusercontent.com/andriar/shoji/v0.4.0/bootstrap.sh
-echo "13981ca2810c99a31120c143f3d23400170a6377e36fff798a76cbd867eef6ef  /tmp/shoji-bootstrap.sh" | sha256sum -c \
+curl -fsSLo /tmp/shoji-bootstrap.sh https://raw.githubusercontent.com/andriar/shoji/v0.5.0/bootstrap.sh
+echo "6c2d10d6fa81149c8e537e75593544adbb1145a59c38821f15b8aaf25471cb11  /tmp/shoji-bootstrap.sh" | sha256sum -c \
   && sh /tmp/shoji-bootstrap.sh            # optional: a palette name, e.g. sh /tmp/shoji-bootstrap.sh yoru
 ```
 
@@ -270,6 +273,7 @@ wallpaper sky and hills), then `shoji doctor <name>` to check contrast and `shoj
   `koyomi`, `popovers`, `overlays` (OSD, cards, meetings, zazen); installed to
   `~/.local/share/shoji/widgets`. Tests: `python3 -m unittest discover tests`.
 - `bin/shoji-media` (now playing, picks the playing player), `bin/shoji-zazen` (focus sessions),
+  `bin/shoji-ink` (the idle screen),
   `bin/shoji-ws` (workspace buttons, see below), `bin/hypr-sysload`, `bin/shoji-level`.
 - `bin/hypr-term` — opens a terminal as a D-Bus action on the running ghostty;
   `bin/hypr-focus-or-launch` — one key per app.
@@ -287,8 +291,11 @@ wallpaper sky and hills), then `shoji doctor <name>` to check contrast and `shoj
 Tested on Ubuntu 24.04 (Zorin OS 18) with Hyprland 0.56.2, waybar 0.14, swaync 0.9 and 0.11, and
 hyprlock 0.9.6, including a clean-home install inside a nested Hyprland (the screenshots come from
 one, with demo data) and two monitors there, one at scale 2 (Koyomi and the swaync panel re-centre on
-whichever monitor has focus; wide sheets fit the screen). Not yet tested: Arch, swaync 0.12 (GTK4)
-and real laptops. Issues and screenshots welcome.
+whichever monitor has focus; wide sheets fit the screen). The PKGBUILD builds, installs and
+uninstalls cleanly in an `archlinux` container (no Arch desktop session tried yet). Koyomi and the
+popovers speak English, Indonesian and Japanese (prefs `"lang"`). The login screen
+(`shoji greeter`, [docs/greeter.md](docs/greeter.md)) is written but not yet tried at a real login.
+Not yet tested: swaync 0.12 (GTK4) and real laptops. Issues and screenshots welcome.
 
 ## License
 
