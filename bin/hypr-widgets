@@ -214,6 +214,10 @@ scale slider { min-width: 14px; min-height: 14px; margin: -5px; border-radius: 7
 .card:hover { background: @hover; }
 .card.active { border-color: @accent; }
 .card .name { font-family: "Kaisei Opti"; font-weight: 700; font-size: 13px; }
+/* media: glass. A thinner pane than the other panels, so the blurred desktop and the cover's
+   colour wash show through; a hairline and a top highlight give the glass an edge */
+.panel.media { background-color: alpha(@base, 0.42); border: 1px solid alpha(@text, 0.16);
+               box-shadow: inset 0 1px alpha(@text, 0.10); }
 .media-title { font-size: 15px; font-weight: 700; color: @text; }
 .media-btn { min-width: 40px; min-height: 40px; padding: 0; }
 .media-btn label { font-family: "lucide"; font-size: 18px; }
@@ -1661,7 +1665,7 @@ class Media(Popover):
         pix = self.cover(t.get("mpris:artUrl", ""))
         wash = self.wash(pix) if pix else None
         self.tint.load_from_data(
-            (f".media {{ background-image: linear-gradient(to bottom, alpha({wash}, 0.6), alpha({wash}, 0.1) 75%); }}"
+            (f".media {{ background-image: linear-gradient(to bottom, alpha({wash}, 0.5), alpha({wash}, 0.04) 80%); }}"
              if wash else "").encode())
         if pix:
             w, h = pix.get_width(), pix.get_height()

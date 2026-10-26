@@ -25,7 +25,7 @@ cfg = {
     "margin-top": 6, "margin-left": 10, "margin-right": 10, "spacing": 0,
     "modules-left": ["custom/launcher", "custom/ws-watch", *WS, "hyprland/window"],
     "modules-center": ["custom/clock", "custom/notification"],
-    "modules-right": ["image#art", "custom/media", "custom/record", "custom/system", "custom/keepawake", "custom/nightlight",
+    "modules-right": ["custom/media", "custom/record", "custom/system", "custom/keepawake", "custom/nightlight",
                       "network", "pulseaudio#mic", "image#vol", "pulseaudio", "image#bat", "battery", "group/tray"],
 
     "custom/launcher": {"format": L("search"), "tooltip-format": "Search apps (Super+Space)",
@@ -74,11 +74,10 @@ cfg = {
         "on-scroll-up": "wpctl set-volume -l 1 @DEFAULT_AUDIO_SOURCE@ 5%+",
         "on-scroll-down": "wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 5%-",
     },
-    # now playing: cover + bars that loop while music plays (shoji-media); click = Media popover
-    "image#art": {"exec": f"{BIN}/shoji-media art", "interval": 30, "signal": 13, "size": 20,
-                  "on-click": f"{BIN}/hypr-pop media", "on-click-right": f"{BIN}/shoji-media toggle",
-                  "tooltip": False},
+    # now playing: bars that loop while music plays (drawn by CSS below) + the title;
+    # click = Media popover, right-click = play/pause, scroll = next/previous
     "custom/media": {"exec": f"{BIN}/shoji-media watch", "return-type": "json", "escape": False,
+                     "max-length": 32,
                      "on-click": f"{BIN}/hypr-pop media", "on-click-right": f"{BIN}/shoji-media toggle",
                      "on-scroll-up": f"{BIN}/shoji-media next", "on-scroll-down": f"{BIN}/shoji-media previous"},
     # volume = ensō ring image + number; both open the Sound popover, scroll = the knob
@@ -178,9 +177,7 @@ window#waybar.empty #window { background: transparent; }
   font-size: 12px; color: @muted;
 }
 
-#image.art { padding: 0 2px 0 8px; }
-#custom-media { font-family: "JetBrainsMono Nerd Font"; font-size: 10px; letter-spacing: 3px; padding: 0 8px 0 4px; }
-#custom-media.playing { color: @accent; }
+#custom-media { padding: 0 10px 0 36px; font-size: 12px; color: @text; }
 #custom-media.paused { color: @muted; }
 #custom-system { font-family: "JetBrainsMono Nerd Font"; font-size: 11px; color: @muted; }
 #custom-system.warning { color: @warn; }
@@ -202,6 +199,42 @@ window#waybar.empty #window { background: transparent; }
 #tray > widget image { opacity: 0.72; }
 #tray > widget:hover image, #tray > .needs-attention image { opacity: 1; }
 '''
+
+
+def eq_css():
+    """Four 3 px bars painted as background layers of #custom-media, left of the title. GTK runs
+    the keyframes itself (smooth, no process per frame): each step sets every bar's height, and
+    the bars stand on one baseline because their y position moves with their height."""
+    import math
+    xs, base, steps = (10, 15, 20, 25), 18, 10
+    def frame(k):
+        hs = [3 + 9 * (0.5 + 0.3 * math.sin(k * a + i * 1.7) + 0.2 * math.sin(k * b + i * 0.6))
+              for i, (a, b) in enumerate(((1.9, 0.8), (1.3, 2.2), (2.4, 0.7), (1.6, 1.2)))]
+        hs = [round(min(12, max(3, h))) for h in hs]
+        size = ", ".join(f"3px {h}px" for h in hs)
+        pos = ", ".join(f"{x}px {base - h}px" for x, h in zip(xs, hs))
+        return f"background-size: {size}; background-position: {pos};"
+    bar = "linear-gradient(@accent, @accent)"
+    rest = ", ".join("3px 3px" for _ in xs)
+    rest_pos = ", ".join(f"{x}px {base - 3}px" for x in xs)
+    keys = "\n".join(f"  {round(100 * k / steps)}% {{ {frame(k)} }}" for k in range(steps + 1))
+    return f"""
+@keyframes eq {{
+{keys}
+}}
+#custom-media {{
+  background-image: {", ".join([bar] * 4)};
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-size: {rest};
+  background-position: {rest_pos};
+}}
+#custom-media.playing {{ animation: eq 3.2s ease-in-out infinite alternate; }}
+#custom-media.paused {{ background-image: {", ".join(["linear-gradient(@muted, @muted)"] * 4)}; }}
+"""
+
+
+css += eq_css()
 # the mic module shares #pulseaudio; give it the icon size back
 css += "#pulseaudio.mic { font-family: \"lucide\"; font-size: 13px; padding: 0 7px; }\n"
 (W / "style.css").write_text(css)
