@@ -540,7 +540,8 @@ class EyeRest(Zazen):
     at something far away for 20 seconds, closing as they pass. Time away (the ink screen, the lock)
     starts the 20 minutes again; a zazen session, a meeting or a shared screen puts it off."""
     STATE = RUN / "shoji-eyes.json"   # never written: nothing to pick up after a restart
-    EVERY_S, LOOK_S = 20 * 60, 20
+    EVERY_S = int(os.environ.get("SHOJI_EYE_EVERY_S", 20 * 60))   # the live test shortens it
+    LOOK_S = 20
 
     def __init__(self, meetings):
         super().__init__()
