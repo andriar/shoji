@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Reduced motion for the whole desktop (Super+Shift+M toggles it).
+
+Off means every animation: Hyprland's (windows, workspaces, layers), GTK's, and Shoji's own (the
+hypr-widgets glides, slides, fades and the OSD tween, the bar's equalizer, swaync's transitions).
+The choice is kept in ~/.config/shoji/prefs.json ("reduced_motion"), so it holds after a login
+(shoji apply) or a Hyprland config reload (hypr-widgets re-applies it).
+
+  hypr-motion [toggle|on|off|apply]   on = reduced motion; apply = re-apply the saved choice
+"""
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+HOME = Path.home()
+PREFS = HOME / ".config/shoji/prefs.json"
+FIFO = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "hypr-osd.fifo"
+
+
+def run(*cmd):
+    try:
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def prefs():
+    try:
+        return json.loads(PREFS.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def apply(still):
+    run("hyprctl", "eval", f"hl.config({{ animations = {{ enabled = {'false' if still else 'true'} }} }})")
+    run("gsettings", "set", "org.gnome.desktop.interface", "enable-animations", "false" if still else "true")
+    for gen in ("gen_waybar.py", "gen_swaync.py"):  # the equalizer loop, swaync's transition time
+        if (HOME / ".config/shoji" / gen).exists():
+            run(sys.executable, str(HOME / ".config/shoji" / gen))
+    run("pkill", "-SIGUSR2", "-x", "waybar")
+    run("swaync-client", "-R")
+    if FIFO.is_fifo():
+        fd = os.open(FIFO, os.O_WRONLY | os.O_NONBLOCK)
+        try:
+            os.write(fd, f"motion\t{'on' if still else 'off'}\n".encode())
+        finally:
+            os.close(fd)
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "toggle"
+    p = prefs()
+    if cmd == "apply":
+        apply(bool(p.get("reduced_motion")))
+        return
+    still = {"on": True, "off": False}.get(cmd, not p.get("reduced_motion"))
+    p["reduced_motion"] = still
+    PREFS.parent.mkdir(parents=True, exist_ok=True)
+    PREFS.write_text(json.dumps(p, indent=1) + "\n")
+    apply(still)
+    run("notify-send", "-a", "Motion", "-u", "low", "Reduced motion" if still else "Motion back on",
+        "Nothing animates. Super+Shift+M brings motion back." if still else "Super+Shift+M to turn it off again.")
+
+
+if __name__ == "__main__":
+    main()

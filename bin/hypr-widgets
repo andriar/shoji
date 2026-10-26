@@ -64,6 +64,13 @@ OSD_MS = 1400
 # one motion scale for Shoji: state changes 150 ms, content that moves 180 ms (ease-out)
 STATE_MS, CONTENT_MS = 150, 180
 OSD_TWEEN_MS = CONTENT_MS
+# reduced motion (hypr-motion, Super+Shift+M; prefs "reduced_motion"): no glides, slides, fades or
+# tweens; states and positions change at once. Updated live through the FIFO ("motion<TAB>on|off").
+MOTION = {"reduced": False}
+
+
+def reduced():
+    return MOTION["reduced"]
 WEEK_K = "日月火水木金土"  # Sunday first, like the calendar grid
 AGENDA_ROWS = 4     # agenda lines under the grid; the card keeps one height (gen_swaync CAL_HEIGHT)
 
@@ -249,8 +256,9 @@ def load_css():
         colors = COLORS.read_bytes()
     except OSError:
         colors = b""
+    still = b"* { transition: none; animation: none; }\n" if reduced() else b""
     try:
-        provider.load_from_data(colors + CSS)
+        provider.load_from_data(colors + CSS + still)
     except GLib.Error as e:
         print("css:", e, file=sys.stderr)
 
@@ -304,6 +312,9 @@ class Glide:
     def to(self, value):
         adj = self.adj
         self.target = max(adj.get_lower(), min(adj.get_upper() - adj.get_page_size(), value))
+        if reduced():
+            self.jump(self.target)
+            return
         self.origin = adj.get_value()
         clock = self.sw.get_frame_clock()
         if clock is None:
@@ -425,7 +436,10 @@ class Osd:
         self.kind = "mic" if low.startswith("micro") else "bri" if low.startswith("bright") else "vol"
         self.pct, self.muted = max(0, min(100, pct)), muted
         self.tween = (self.shown, 0 if muted else self.pct, None)
-        if not self.ticking:
+        if reduced():
+            self.shown = self.tween[1]
+            self.area.queue_draw()
+        elif not self.ticking:
             self.ticking = True
             self.area.add_tick_callback(self.step)
         self.win.show()
@@ -1117,6 +1131,7 @@ class Calendar:
                 self.grid.attach(b, col, r, 1, 1)
         self.grid.show_all()
         if self.slide:
+            self.grid_stack.set_transition_duration(0 if reduced() else CONTENT_MS)
             self.grid_stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT if self.slide > 0
                                                 else Gtk.StackTransitionType.SLIDE_RIGHT)
             self.grid_stack.set_visible_child(self.grid)
@@ -1169,6 +1184,7 @@ class Calendar:
             self.rows.pack_start(more, False, False, 0)
         self.rows.show_all()
         if fade:
+            self.row_stack.set_transition_duration(0 if reduced() else CONTENT_MS)
             self.row_stack.set_visible_child(self.rows)
         # a GTK window grows with its content but never shrinks back on its own; the card must keep
         # the swaync panel's height (sources answering one by one briefly made it taller)
@@ -2479,6 +2495,9 @@ def watch_fifo(osd, pops, zazen, shot):
                 pops.toggle(parts[1])
             elif len(parts) == 3 and parts[0] == "pop" and parts[1] in ("launcher", "keys"):
                 pops.open_with(parts[1], parts[2])  # hypr-pop launcher|keys <text>: open with a query
+            elif len(parts) == 2 and parts[0] == "motion":
+                MOTION["reduced"] = parts[1] == "on"
+                load_css()
             elif len(parts) == 2 and parts[0] == "shot":
                 shot.show(parts[1])
             elif len(parts) == 2 and parts[0] == "zazen":
@@ -2526,6 +2545,8 @@ class NotifyFocus:
         if line is None:  # Hyprland went away
             return
         event, _, addr = line.partition(">>")
+        if event == "configreloaded" and reduced():  # a reload turns Hyprland's animations back on
+            spawn("hyprctl", "eval", "hl.config({ animations = { enabled = false } })")
         if event in ("focusedmon", "focusedmonv2"):
             GLib.idle_add(fit_panel)
         if event == "screencast" and self.meetings:  # "1,0" sharing a monitor, "1,1" a window, "0,…" stopped
@@ -2581,6 +2602,7 @@ def main():
     except (OSError, ValueError):
         pass
     PIDFILE.write_text(str(os.getpid()))
+    MOTION["reduced"] = bool(prefs().get("reduced_motion"))
     Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), provider,
                                              Gtk.STYLE_PROVIDER_PRIORITY_USER)
     load_css()

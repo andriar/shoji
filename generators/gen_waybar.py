@@ -142,7 +142,7 @@ tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
   border-radius: 4px;
   background: transparent;
   color: @text;
-  transition: background 150ms ease-out, color 150ms ease-out;
+  transition: background 150ms ease-out, color 150ms ease-out;  /* none under reduced motion (below) */
 }
 #custom-launcher:hover, #custom-ws:hover, #custom-clock:hover, #custom-notification:hover,
 #custom-system:hover, #network:hover, #pulseaudio:hover, #image:hover {
@@ -200,6 +200,16 @@ window#waybar.empty #window { background: transparent; }
 '''
 
 
+def reduced_motion():
+    try:
+        return bool(json.loads((Path.home() / ".config/shoji/prefs.json").read_text()).get("reduced_motion"))
+    except (OSError, ValueError):
+        return False
+
+
+REDUCED = reduced_motion()  # hypr-motion: the equalizer stands still
+
+
 def eq_css():
     """Four 3 px bars painted as background layers of #custom-media, left of the title. GTK runs
     the keyframes itself (smooth, no process per frame): each step sets every bar's height, and
@@ -238,13 +248,15 @@ def eq_css():
   background-size: {rest};
   background-position: {rest_pos};
 }}
-#custom-media.playing {{ animation: eq 3.2s ease-in-out infinite alternate; }}
+#custom-media.playing {{ animation: {"none" if REDUCED else "eq 3.2s ease-in-out infinite alternate"}; }}
 {hues}
 #custom-media.paused {{ background-image: {", ".join(["linear-gradient(@muted, @muted)"] * 4)}; }}
 """
 
 
 css += eq_css()
+if REDUCED:
+    css += "* { transition: none; }\n"
 # the mic module shares #pulseaudio; give it the icon size back
 css += "#pulseaudio.mic { font-family: \"lucide\"; font-size: 13px; padding: 0 7px; }\n"
 (W / "style.css").write_text(css)

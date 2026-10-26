@@ -11,6 +11,13 @@ GAP = 8
 WIDTH = 420
 
 
+def reduced_motion():
+    try:
+        return bool(json.loads((Path.home() / ".config/shoji/prefs.json").read_text()).get("reduced_motion"))
+    except (OSError, ValueError):
+        return False
+
+
 def screen_width():
     """Logical width of the focused monitor: the panel starts at its centre line."""
     import subprocess
@@ -40,7 +47,7 @@ cfg = {
   # False: with True swaync grabs the keyboard exclusively, and Hyprland then sends clicks only to
   # it, so Koyomi's buttons and days never got them (the click closed the panel instead)
   "keyboard-shortcuts": False, "image-visibility": "when-available",
-  "transition-time": 180, "hide-on-clear": False, "hide-on-action": True,
+  "transition-time": 0 if reduced_motion() else 180, "hide-on-clear": False, "hide-on-action": True,
   "script-fail-notify": True,
   "notification-visibility": {
     "osd": {"state": "transient", "app-name": "^OSD$"},

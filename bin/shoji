@@ -1058,6 +1058,8 @@ def set_wallpaper(path=None):
 def reload_apps():
     if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
         run("hyprctl", "reload")
+        if prefs_get("reduced_motion"):  # the reload turned Hyprland's animations back on
+            run("hyprctl", "eval", "hl.config({ animations = { enabled = false } })")
     run("pkill", "-SIGUSR2", "-x", "waybar")
     if subprocess.run(["pgrep", "-x", "swaync"], stdout=subprocess.DEVNULL).returncode == 0:
         run("swaync-client", "-rs", "-sw")

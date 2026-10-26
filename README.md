@@ -212,6 +212,7 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 | `Super+Z` | zazen: 25 minutes of focus (again = stop) |
 | `Super+T` · `Super+[` / `]` | tab windows · previous / next tab |
 | `Super+Shift+T` | theme manager |
+| `Super+Shift+M` | reduced motion: Hyprland, GTK and Shoji stop animating (again = back) |
 | `PrtSc` / `Super+Shift+P` | screenshot an area (`Super+Ctrl+P`: the screenshot menu) |
 | volume keys, keyboard knob | ensō OSD |
 
@@ -224,7 +225,7 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 
 Preferences live in `~/.config/shoji/prefs.json`: `"seasonal"`, `"follow_sun"`, `"weather"` (`false`,
 or `{"place": "Kyoto"}`; default: the city of your time zone), `"greet"` (one dim
-line in new terminals), `"rin"` (false = no bell), `"auto_silent"` (false = no Silent in meetings), `"numerals"` (`"kanji"` or `"arabic"`).
+line in new terminals), `"rin"` (false = no bell), `"auto_silent"` (false = no Silent in meetings), `"reduced_motion"` (Super+Shift+M: nothing animates anywhere), `"numerals"` (`"kanji"` or `"arabic"`).
 
 ## Make your own palette
 
