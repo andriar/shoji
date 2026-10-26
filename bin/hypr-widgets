@@ -3,8 +3,9 @@
 
   osd       ensō ring, top right: volume / mic level, shown even when Do Not Disturb is on.
             hypr-osd writes "icon<TAB>title<TAB>percent<TAB>muted" lines to $FIFO.
-  calendar  Koyomi: kanji week, today as a seal; sits left of the swaync control center
-            while it is open (follows swaync's SubscribeV2 cc_open signal).
+  calendar  Koyomi: kanji week, today as a seal; sits on top of the swaync control center
+            while it is open (follows swaync's SubscribeV2 cc_open signal). Click a day for its
+            events and due tasks from Evolution Data Server (what GNOME Calendar shows).
   popovers  Sound (devices + volume), Network, Battery, the Theme manager, the launcher and the
             shortcuts sheet. hypr-pop writes "pop<TAB>audio|network|battery|theme|launcher|keys" to $FIFO;
             the same line again closes it.
@@ -18,8 +19,10 @@ import importlib.machinery
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import cairo
@@ -29,7 +32,15 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 gi.require_version("GtkLayerShell", "0.1")
 gi.require_version("PangoCairo", "1.0")
-from gi.repository import Gdk, GLib, Gio, Gtk, GtkLayerShell as Layer, PangoCairo  # noqa: E402
+from gi.repository import Gdk, GLib, Gio, Gtk, GtkLayerShell as Layer, Pango, PangoCairo  # noqa: E402
+
+try:  # events and tasks for Koyomi come from Evolution Data Server (package gir1.2-ecal-2.0); optional
+    gi.require_version("ECal", "2.0")
+    gi.require_version("EDataServer", "1.2")
+    gi.require_version("ICalGLib", "3.0")
+    from gi.repository import ECal, EDataServer, ICalGLib  # noqa: E402
+except (ValueError, ImportError):
+    ECal = None
 
 HOME = Path.home()
 RUN = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
@@ -45,6 +56,7 @@ GAP = 8
 OSD_MS = 1400
 OSD_TWEEN_MS = 240
 WEEK_K = "日月火水木金土"  # Sunday first, like the calendar grid
+AGENDA_ROWS = 4     # agenda lines under the grid; the card keeps one height (gen_swaync CAL_HEIGHT)
 
 
 def icon(name):
@@ -106,6 +118,21 @@ CSS = b"""
 .day { min-width: 30px; min-height: 22px; border-radius: 5px; font-size: 12px; color: @text; }
 .day.other { color: alpha(@text, 0.32); }
 .day.today { background: @accent; color: @on_accent; font-weight: 700; }
+button.day { padding: 0; border: none; box-shadow: none; background-image: none; }
+.agenda button.day { min-height: 27px; }  /* room for the event dot */
+.agenda .day .num { margin-bottom: 5px; }
+button.day:not(.today) { background: transparent; }
+button.day:not(.today):hover { background: @hover; }
+.day.sel { box-shadow: inset 0 0 0 1px @accent; }
+.day .mark { min-width: 4px; min-height: 4px; border-radius: 2px; background: @accent; margin-bottom: 2px; }
+.day.today .mark { background: @on_accent; }
+.day.other .mark { opacity: 0.4; }
+.agenda-row { background: transparent; background-image: none; border: none; box-shadow: none;
+              border-radius: 7px; padding: 0 8px; min-height: 24px; color: @text; }
+.agenda-row:hover { background: @hover; }
+.agenda-row .when { font-family: "JetBrainsMono Nerd Font"; font-size: 11px; color: @muted; }
+.agenda-row .tick { font-family: "lucide"; font-size: 11px; }
+.agenda-row.more { color: @muted; }
 .nav { background: transparent; border: none; box-shadow: none; color: @muted; min-width: 24px; min-height: 22px;
        padding: 0; border-radius: 5px; font-family: "lucide"; }
 .nav:hover { background: @hover; color: @text; }
@@ -338,6 +365,132 @@ class Osd:
         return False
 
 
+# ---------------------------------------------------------------- Koyomi agenda (EDS)
+def local_zone():
+    try:
+        name = Path("/etc/timezone").read_text().strip()
+    except OSError:
+        name = os.path.realpath("/etc/localtime").partition("zoneinfo/")[2]
+    return ICalGLib.Timezone.get_builtin_timezone(name) if name else None
+
+
+def ical_when(t):
+    """ICalGLib.Time -> date (all-day) or local naive datetime."""
+    if t.is_date():
+        return datetime.date(t.get_year(), t.get_month(), t.get_day())
+    zone = t.get_timezone() or (ICalGLib.Timezone.get_utc_timezone() if t.is_utc() else None)
+    if zone is None:  # floating time: already wall-clock
+        return datetime.datetime(t.get_year(), t.get_month(), t.get_day(), t.get_hour(), t.get_minute())
+    return datetime.datetime.fromtimestamp(t.as_timet_with_zone(zone))
+
+
+def epoch(d):
+    return int(datetime.datetime.combine(d, datetime.time()).timestamp())
+
+
+class Agenda:
+    """Events and open tasks per day from Evolution Data Server: the calendars GNOME Calendar
+    shows (Google through Online Accounts, local, holidays) and task lists (Google Tasks).
+
+    Each source is read in its own thread. EDS waits up to CONNECT_WAIT for an offline calendar
+    before it answers from cache, and that wait must hold neither the other sources nor GTK.
+    Results come back to the GTK thread through GLib.idle_add."""
+    CONNECT_WAIT = 1
+
+    def __init__(self, on_update):
+        self.on_update = on_update
+        self.registry = None
+        self.zone = None
+        self.clients = {}   # source uid -> ECal.Client, kept between reads
+        self.busy = set()   # source uids with a read in flight
+        self.range = None   # (first, last) day of the grid being shown
+        self.items = {}     # source uid -> [item] for self.range
+
+    def load(self, first, last):
+        self.range = (first, last)
+        self.items = {}
+        if self.registry is None:
+            try:
+                self.registry = EDataServer.SourceRegistry.new_sync(None)
+            except GLib.Error:
+                return
+            self.zone = local_zone()
+        for ext, kind in ((EDataServer.SOURCE_EXTENSION_CALENDAR, ECal.ClientSourceType.EVENTS),
+                          (EDataServer.SOURCE_EXTENSION_TASK_LIST, ECal.ClientSourceType.TASKS)):
+            for src in self.registry.list_enabled(ext):
+                sel = src.get_extension(ext)
+                if sel.get_selected():  # hidden in GNOME Calendar = hidden here
+                    self.read(src, kind, sel.get_color() or "#888888")
+
+    def read(self, src, kind, color):
+        uid = src.get_uid()
+        if uid in self.busy:  # _done reads it again for the new range
+            return
+        self.busy.add(uid)
+        threading.Thread(target=self._read, args=(src, kind, color, self.range), daemon=True).start()
+
+    def _read(self, src, kind, color, rng):
+        uid, items = src.get_uid(), []
+        client = self.clients.get(uid)
+        try:
+            if client is None:
+                client = ECal.Client.connect_sync(src, kind, self.CONNECT_WAIT, None)
+                if self.zone:
+                    client.set_default_timezone(self.zone)
+            start, end = epoch(rng[0]), epoch(rng[1] + datetime.timedelta(days=1))
+            if kind == ECal.ClientSourceType.EVENTS:
+                def instance(comp, t0, t1, *_):
+                    items.extend(self.event_items(comp, t0, t1, color))
+                    return True
+                client.generate_instances_sync(start, end, None, instance)
+            else:
+                query = (f'(and (due-in-time-range? (make-time "{ECal.isodate_from_time_t(start)}") '
+                         f'(make-time "{ECal.isodate_from_time_t(end)}")) (not (is-completed?)))')
+                for comp in client.get_object_list_as_comps_sync(query, None)[1]:
+                    ic = comp.get_icalcomponent()
+                    day = ical_when(ic.get_due())
+                    day = day.date() if isinstance(day, datetime.datetime) else day
+                    items.append({"uid": ic.get_uid(), "day": day, "when": "", "task": True,
+                                  "title": ic.get_summary() or "(untitled)", "color": color})
+        except GLib.Error as e:
+            print("agenda:", src.get_display_name(), e.message, file=sys.stderr)
+        GLib.idle_add(self._done, src, kind, color, client, rng, items)
+
+    @staticmethod
+    def event_items(comp, t0, t1, color):
+        start, end = ical_when(t0), ical_when(t1)
+        base = {"uid": comp.get_uid(), "task": False, "title": comp.get_summary() or "(untitled)",
+                "color": color}
+        if isinstance(start, datetime.datetime):
+            return [{**base, "day": start.date(), "when": start.strftime("%H:%M")}]
+        days = max(1, ((end if isinstance(end, datetime.date) else start) - start).days)
+        return [{**base, "day": start + datetime.timedelta(days=i), "when": "終日"} for i in range(days)]
+
+    def _done(self, src, kind, color, client, rng, items):
+        uid = src.get_uid()
+        self.busy.discard(uid)
+        if client is not None:
+            self.clients[uid] = client
+        if rng == self.range:
+            self.items[uid] = items
+            self.on_update()
+        else:  # the grid moved while this source was busy
+            self.read(src, kind, color)
+        return False
+
+    def day(self, d):
+        seen, out = set(), []
+        for it in (i for items in self.items.values() for i in items if i["day"] == d):
+            key = (it["uid"], it["when"])  # the same holiday from two subscribed calendars
+            if key not in seen:
+                seen.add(key)
+                out.append(it)
+        return sorted(out, key=lambda i: (i["task"], i["when"] != "終日", i["when"], i["title"]))
+
+    def days(self):
+        return {i["day"] for items in self.items.values() for i in items}
+
+
 # ---------------------------------------------------------------- Koyomi calendar
 class Calendar:
     """Top card of the Koyomi column; the swaync panel sits right under it (same width)."""
@@ -372,9 +525,27 @@ class Calendar:
         box.pack_start(nav, False, False, 0)
         self.grid = Gtk.Grid(column_homogeneous=True, row_spacing=2)
         box.pack_start(self.grid, False, False, 0)
+        self.agenda = Agenda(self.fill_agenda) if ECal else None
+        if self.agenda:
+            box.get_style_context().add_class("agenda")
+            box.pack_start(sep(), False, False, 0)
+            head = Gtk.Box(spacing=4)
+            self.sel_label = label("", "title")
+            head.pack_start(self.sel_label, True, True, 0)
+            if shutil.which("gnome-calendar"):
+                b = Gtk.Button(label=icon("external-link"))
+                b.get_style_context().add_class("nav")
+                b.set_tooltip_text("Open in GNOME Calendar")
+                b.connect("clicked", lambda _b: self.open_day())
+                head.pack_start(b, False, False, 0)
+            box.pack_start(head, False, False, 0)
+            self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            self.rows.set_size_request(-1, AGENDA_ROWS * 24)
+            box.pack_start(self.rows, False, False, 0)
         self.win.add(box)
         box.show_all()
         self.view = datetime.date.today().replace(day=1)
+        self.selected = datetime.date.today()
 
     def shift(self, step):
         y, m = self.view.year, self.view.month + step
@@ -383,30 +554,107 @@ class Calendar:
         elif m == 13:
             y, m = y + 1, 1
         self.view = datetime.date(y, m, 1)
-        self.fill()
+        today = datetime.date.today()
+        self.selected = today if (today.year, today.month) == (y, m) else self.view
+        self.load()
+
+    def weeks(self):
+        weeks = cal_mod.Calendar(firstweekday=6).monthdatescalendar(self.view.year, self.view.month)  # Sunday first
+        while len(weeks) < 6:  # always 6 rows: the card keeps one height, the panel under it never moves
+            weeks.append([d + datetime.timedelta(days=7) for d in weeks[-1]])
+        return weeks
+
+    def load(self):
+        """Draw the month, then ask EDS for its events; fill_agenda redraws as sources answer."""
+        if self.agenda:
+            weeks = self.weeks()
+            self.agenda.load(weeks[0][0], weeks[-1][-1])
+        self.fill_agenda()
+
+    def pick(self, d):
+        self.selected = d
+        if (d.year, d.month) != (self.view.year, self.view.month):
+            self.view = d.replace(day=1)
+            self.load()
+        else:
+            self.fill_agenda()
 
     def fill(self):
         for child in self.grid.get_children():
             self.grid.remove(child)
         today = datetime.date.today()
+        marked = self.agenda.days() if self.agenda else set()
         self.month.set_text(self.view.strftime("%B %Y"))
         for i, k in enumerate(WEEK_K):
             self.grid.attach(label(k, "wk", xalign=0.5), i, 0, 1, 1)
-        c = cal_mod.Calendar(firstweekday=6)  # Sunday first
-        weeks = c.monthdatescalendar(self.view.year, self.view.month)
-        while len(weeks) < 6:  # always 6 rows: the card keeps one height, the panel under it never moves
-            weeks.append([d + datetime.timedelta(days=7) for d in weeks[-1]])
-        for r, week in enumerate(weeks, start=1):
+        for r, week in enumerate(self.weeks(), start=1):
             for col, d in enumerate(week):
-                cls = ["day"]
+                b = Gtk.Button()
+                b.set_halign(Gtk.Align.CENTER)
+                ctx = b.get_style_context()
+                ctx.add_class("day")
                 if d.month != self.view.month:
-                    cls.append("other")
+                    ctx.add_class("other")
                 if d == today:
-                    cls.append("today")
-                lab = label(str(d.day), *cls, xalign=0.5)
-                lab.set_halign(Gtk.Align.CENTER)
-                self.grid.attach(lab, col, r, 1, 1)
+                    ctx.add_class("today")
+                if d == self.selected and self.agenda:
+                    ctx.add_class("sel")
+                over = Gtk.Overlay()
+                over.add(label(str(d.day), "num", xalign=0.5))
+                if d in marked:
+                    mark = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.END)
+                    mark.get_style_context().add_class("mark")
+                    over.add_overlay(mark)
+                b.add(over)
+                b.connect("clicked", lambda _b, d=d: self.pick(d))
+                self.grid.attach(b, col, r, 1, 1)
         self.grid.show_all()
+
+    def fill_agenda(self):
+        self.fill()
+        if not self.agenda:
+            return
+        d = self.selected
+        self.sel_label.set_text(f"{d.strftime('%A')} · {d.strftime('%-d %B')}")
+        for child in self.rows.get_children():
+            self.rows.remove(child)
+        items = self.agenda.day(d)
+        if not items:
+            self.rows.pack_start(label("Nothing scheduled", "muted"), False, False, 4)
+        shown = items if len(items) <= AGENDA_ROWS else items[:AGENDA_ROWS - 1]
+        for it in shown:
+            b = Gtk.Button()
+            b.get_style_context().add_class("agenda-row")
+            row = Gtk.Box(spacing=8)
+            tick = Gtk.Label(xalign=0.5)
+            tick.get_style_context().add_class("tick")
+            glyph = icon("circle") if it["task"] else "●"
+            tick.set_markup(f'<span foreground="{it["color"]}">{GLib.markup_escape_text(glyph)}</span>')
+            row.pack_start(tick, False, False, 0)
+            when = label(it["when"], "when")
+            when.set_width_chars(5)
+            row.pack_start(when, False, False, 0)
+            title = label(it["title"])
+            title.set_ellipsize(Pango.EllipsizeMode.END)
+            row.pack_start(title, True, True, 0)
+            b.add(row)
+            b.set_tooltip_text(it["title"])
+            b.connect("clicked", lambda _b: self.open_day())
+            self.rows.pack_start(b, False, False, 0)
+        if len(items) > len(shown):
+            more = Gtk.Button()
+            more.add(label(f"+{len(items) - len(shown)} more"))
+            for c in ("agenda-row", "more"):
+                more.get_style_context().add_class(c)
+            more.connect("clicked", lambda _b: self.open_day())
+            self.rows.pack_start(more, False, False, 0)
+        self.rows.show_all()
+
+    def open_day(self):
+        """GNOME Calendar on the picked day; --date is parsed with the locale's %x, like strftime."""
+        if shutil.which("gnome-calendar"):
+            spawn("swaync-client", "-cp")
+            spawn("gnome-calendar", "--date", self.selected.strftime("%x"))
 
     def show(self):
         load_css()
@@ -415,7 +663,8 @@ class Calendar:
         self.weekday.set_text(f"{today.strftime('%A')} · {WEEK_K[(today.weekday() + 1) % 7]}曜日")
         self.date.set_text(today.strftime("%-d %B"))
         self.yw.set_text(f"{today.year} · w{today.isocalendar()[1]}")
-        self.fill()
+        self.selected = today
+        self.load()
         self.win.show()
 
     def hide(self):

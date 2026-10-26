@@ -25,6 +25,8 @@ if [ ${#missing[@]} -gt 0 ]; then
 fi
 command -v starship >/dev/null || echo "  (optional) starship not found: the terminal prompt stays as it is"
 command -v ghostty  >/dev/null || echo "  (optional) ghostty not found: terminal colors are skipped"
+python3 -c 'import gi; gi.require_version("ECal", "2.0")' 2>/dev/null \
+  || echo "  (optional) gir1.2-ecal-2.0 not found: Koyomi shows no events or tasks"
 
 say "2/6 Backing up current files to $BACKUP"
 mkdir -p "$(dirname "$BACKUP")"

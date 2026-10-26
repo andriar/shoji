@@ -5,7 +5,20 @@ import json
 from pathlib import Path
 D = Path.home() / ".config/swaync"
 ICONS = json.loads((Path.home() / ".local/share/fonts/Shoji/lucide-info.json").read_text())
-CAL_HEIGHT = 284   # hypr-widgets calendar card (6 week rows, fixed)
+
+
+def has_agenda():
+    """hypr-widgets adds a day agenda under the grid when the EDS bindings (gir1.2-ecal-2.0) exist."""
+    try:
+        import gi
+        gi.require_version("ECal", "2.0")
+        from gi.repository import ECal  # noqa: F401
+        return True
+    except (ImportError, ValueError):
+        return False
+
+
+CAL_HEIGHT = 463 if has_agenda() else 284   # hypr-widgets calendar card (6 week rows [+ agenda], fixed)
 GAP = 8
 close = "swaync-client -cp; sleep 0.3; "
 

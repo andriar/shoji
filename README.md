@@ -18,6 +18,7 @@ folder icons and the wallpaper.
   prefer; click or scroll to switch), the time with the weekday in kanji, Lucide icons, app tray
   icons tucked behind ⋯.
 - **Koyomi** — click the clock for a kanji calendar on top of quick settings and notifications.
+  Click a day to see its events and due tasks (the calendars GNOME Calendar shows, Google included).
 - **Popovers with one shape** — Sound (devices and volume), Network, Battery (laptops), Theme.
 - **Launcher** (Super+Space) — frequent apps first; searches names, descriptions and keywords.
   Enter focuses the app if it is already open; Shift+Enter opens a new window. Apps with their own
@@ -66,6 +67,8 @@ sudo pacman -S hyprland waybar swaync fuzzel hyprlock hyprpaper wireplumber libp
 
 Optional: `ghostty` and `starship` (terminal colors and the `❯` prompt), `btop`, `qt6ct`,
 `brightnessctl` and `power-profiles-daemon` (laptops: brightness ensō, battery popover).
+For the Koyomi agenda: `gir1.2-ecal-2.0` (Arch: `evolution-data-server`) plus `gnome-calendar`
+and GNOME Online Accounts for Google calendars and tasks. Without it the calendar shows no agenda.
 
 ### Terminal tools (optional)
 
