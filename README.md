@@ -286,7 +286,12 @@ wallpaper sky and hills), then `shoji doctor <name>` to check contrast and `shoj
   clicked notification's window forward and keeps today's agenda cached for `shoji greet`.
 - `widgets/shoji_widgets/` — hypr-widgets' surfaces as modules: `base` (palette, CSS, motion, Glide),
   `koyomi`, `popovers`, `overlays` (OSD, cards, meetings, zazen); installed to
-  `~/.local/share/shoji/widgets`. Tests: `python3 -m unittest discover tests`.
+  `~/.local/share/shoji/widgets`. Tests: `python3 -m unittest discover tests` (logic, seconds), and
+  `tests/live/run.sh` (about four minutes, from a Hyprland session): a second Hyprland hidden inside
+  yours runs this checkout and checks on screen what offscreen renders miss: meetings and Silent,
+  Alt+Tab, idle → ink → lock, batches, the end-of-day card (pressed through AT-SPI), the eye rest,
+  label heights. It has its own HOME, runtime dir and bus; stand-ins on its PATH keep `pkill`,
+  `loginctl`, `xdg-open`, `gsettings` and the like away from your session.
 - `bin/shoji-media` (now playing, picks the playing player), `bin/shoji-zazen` (focus sessions),
   `bin/shoji-ink` (the idle screen),
   `bin/shoji-ws` (workspace buttons, see below), `bin/hypr-sysload`, `bin/shoji-level`.
