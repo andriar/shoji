@@ -1165,10 +1165,10 @@ class Switch(Popover):
         self.pick(self.at + 1)
 
     def go(self):
-        if self.cards:
-            addr = self.wins[self.at]["address"]
-            sh("hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{addr}" }})')
+        addr = self.wins[self.at]["address"] if self.cards else None
         self.manager.close()
+        if addr:  # once the cards have let go of the keyboard: while they hold it, the focus snaps back
+            GLib.timeout_add(40, lambda: sh("hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{addr}" }})') and False)
 
     def on_key(self, w, ev):
         back = ev.keyval in (Gdk.KEY_ISO_Left_Tab, Gdk.KEY_Left) or (

@@ -247,6 +247,13 @@ class Ink(unittest.TestCase):
         b, g, r, a = surf.get_data()[:4]
         self.assertEqual((r, g, b, a), (0x10, 0x20, 0x30, 255))
 
+    def test_gtk_loads_in_a_fresh_process(self):
+        import subprocess
+        code = ("import importlib.machinery, sys; importlib.machinery.SourceFileLoader('ink', sys.argv[1])"
+                ".load_module().gtk()")
+        r = subprocess.run([sys.executable, "-c", code, str(REPO / "bin/shoji-ink")], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr[-300:])
+
     def test_ink_off_in_prefs_never_starts(self):
         with tempfile.TemporaryDirectory() as d:
             self.ink.PREFS = Path(d) / "prefs.json"

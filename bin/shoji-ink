@@ -139,12 +139,18 @@ def frame(out, seconds):
     surf.write_to_png(out)
 
 
-def show(preview=False):
-    import cairo
+def gtk():
     import gi
+    gi.require_version("Gdk", "3.0")   # unpinned, Gdk would load 4.0 and Gtk 3 could not follow
     gi.require_version("Gtk", "3.0")
     gi.require_version("GtkLayerShell", "0.1")
-    from gi.repository import Gdk, GLib, Gtk, GtkLayerShell as Layer
+    from gi.repository import Gdk, GLib, Gtk, GtkLayerShell
+    return Gdk, GLib, Gtk, GtkLayerShell
+
+
+def show(preview=False):
+    import cairo
+    Gdk, GLib, Gtk, Layer = gtk()
 
     pal = palette()
     still = bool(prefs().get("reduced_motion"))
@@ -211,6 +217,7 @@ def show(preview=False):
             return True
 
         win.connect("draw", draw)
+        win.connect("realize", lambda w: w.get_window().set_cursor(Gdk.Cursor.new_for_display(w.get_display(), Gdk.CursorType.BLANK_CURSOR)))
         win.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.KEY_PRESS_MASK)
         win.connect("button-press-event", leave)
         win.connect("key-press-event", leave)

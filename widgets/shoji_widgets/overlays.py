@@ -142,6 +142,7 @@ class ShotCard:
             line.pack_start(b, False, False, 0)
         self.box.pack_start(line, False, False, 0)
         self.box.show_all()
+        self.win.resize(1, 1)  # a GTK window never shrinks back on its own: fit this content
         self.win.show_all()
         self.later()
 
@@ -224,6 +225,7 @@ class ReminderCard:
         row.pack_end(later, False, False, 0)
         self.box.pack_start(row, False, False, 2)
         self.box.show_all()
+        self.win.resize(1, 1)  # a GTK window never shrinks back on its own: fit this content
         self.win.show_all()
         if self.timer:
             GLib.source_remove(self.timer)
