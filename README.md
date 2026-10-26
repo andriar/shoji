@@ -64,7 +64,8 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
   and off after, with a note of what waited. Ten minutes before an event a card offers **Join**
   when it carries a Meet / Zoom / Teams link.
 - **Seasonal accent** (optional): 紅梅 spring, 青竹 summer, 紅葉 autumn, 白群 winter.
-- **Wallpaper**: ink-wash mountains under the sun (light palettes) or tonight's real moon phase.
+- **Wallpaper**: ink-wash mountains under the sun (light palettes) or tonight's real moon phase; the sky
+  turns pink at dawn, gold before sunset and violet after it (夕暮れ, from your city's sun times).
 
 **Everyday tools**
 - **Launcher** (Super+Space): frequent apps first; Enter focuses an app that is already open.

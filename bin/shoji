@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Shoji (障子) — one palette file for the whole Hyprland desktop.
 
-Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome|moon|greet|season|...]
+Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome|moon|senja|greet|season|...]
   apply NAME    switch to a palette (no NAME: re-apply the saved one, quiet; Hyprland autostart)
   list          palettes, the current one marked
   toggle        dark <-> light (Hiru, or Yuki for Aizome)
@@ -13,6 +13,7 @@ Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome
   spotify       make Shoji the spicetify theme (then run `spicetify apply` when Spotify can restart)
   chrome        where the Chrome theme is and how to load it
   moon          redraw the wallpaper with tonight's moon phase (dark palettes)
+  senja         redraw it when the sky's dawn / sunset tint changes (夕暮れ; hypr-widgets runs it)
   greet         one line for a new terminal: today's 候 and what is next (prefs "greet": true)
   season        the season for the seasonal accent: spring 紅梅 / summer 青竹 / autumn 紅葉 / winter 白群
   date-kanji    十月二十四日 · 土曜日   (lock screen)
@@ -958,15 +959,60 @@ def monitor_size():
         return 2560, 1440
 
 
+def sun_hours(day=None):
+    """Local sunrise and sunset (hours) for the weather's place (NOAA's approximation); 6 and 18
+    when the place is unknown."""
+    try:
+        w = json.loads((CACHE / "weather.json").read_text())
+        lat, lon = float(w["lat"]), float(w["lon"])
+    except (OSError, ValueError, KeyError):
+        return 6.0, 18.0
+    d = day or datetime.date.today()
+    g = 2 * math.pi / 365 * (d.timetuple().tm_yday - 1)
+    eqtime = 229.18 * (0.000075 + 0.001868 * math.cos(g) - 0.032077 * math.sin(g)
+                       - 0.014615 * math.cos(2 * g) - 0.040849 * math.sin(2 * g))
+    decl = (0.006918 - 0.399912 * math.cos(g) + 0.070257 * math.sin(g) - 0.006758 * math.cos(2 * g)
+            + 0.000907 * math.sin(2 * g) - 0.002697 * math.cos(3 * g) + 0.00148 * math.sin(3 * g))
+    la = math.radians(lat)
+    cos_ha = math.cos(math.radians(90.833)) / (math.cos(la) * math.cos(decl)) - math.tan(la) * math.tan(decl)
+    ha = math.degrees(math.acos(max(-1.0, min(1.0, cos_ha))))
+    offset = time.localtime().tm_gmtoff / 60
+    rise = (720 - 4 * (lon + ha) - eqtime + offset) / 60
+    sset = (720 - 4 * (lon - ha) - eqtime + offset) / 60
+    return rise % 24, sset % 24
+
+
+def sky_tint(now=None):
+    """夕暮れ: (colour, strength 0..1) the sky takes at this hour. Dawn turns it pink, the last hour
+    before sunset gold, the three quarters after it violet (blue hour); the rest of the day, none.
+    Strength moves in tenths so the wallpaper changes only now and then."""
+    now = now or datetime.datetime.now()
+    h = now.hour + now.minute / 60
+    rise, sset = sun_hours(now.date())
+    if rise - 0.5 <= h < rise + 1:
+        colour, f = "#e9a0a8", 1 - abs(h - rise) / 1.0
+    elif sset - 1.25 <= h < sset:
+        colour, f = "#e9895c", (h - (sset - 1.25)) / 1.25
+    elif sset <= h < sset + 0.75:
+        k = (h - sset) / 0.75
+        colour, f = mix("#e9895c", "#6c5a9c", k), 1 - k * 0.6
+    else:
+        return None, 0.0
+    return colour, round(max(0.0, min(1.0, f)), 1)
+
+
 def render_wallpaper(name):
     import cairo
     p = PALETTES[name]
     w, h = monitor_size()
     s = cairo.ImageSurface(cairo.FORMAT_RGB24, w, h)
     c = cairo.Context(s)
+    tint, strength = sky_tint()
+    strength *= 0.7 if p["dark"] else 1.0  # a dark sky keeps its night
+    sky = (mix(p["sky"][0], tint, strength * 0.35), mix(p["sky"][1], tint, strength * 0.55)) if tint else p["sky"]
     g = cairo.LinearGradient(0, 0, 0, h)
-    g.add_color_stop_rgba(0, *cairo_rgb(p["sky"][0]))
-    g.add_color_stop_rgba(1, *cairo_rgb(p["sky"][1]))
+    g.add_color_stop_rgba(0, *cairo_rgb(sky[0]))
+    g.add_color_stop_rgba(1, *cairo_rgb(sky[1]))
     c.set_source(g)
     c.paint()
     # the sun on light palettes; on dark ones tonight's moon, in its real phase
@@ -1012,9 +1058,9 @@ def render_wallpaper(name):
         c.fill()
         if i == 0:  # mist between the first and second ridge
             m = cairo.LinearGradient(0, 420 * sy, 0, 540 * sy)
-            m.add_color_stop_rgba(0, *cairo_rgb(p["sky"][1], 0))
-            m.add_color_stop_rgba(0.55, *cairo_rgb(p["sky"][1], 0.7))
-            m.add_color_stop_rgba(1, *cairo_rgb(p["sky"][1], 0))
+            m.add_color_stop_rgba(0, *cairo_rgb(sky[1], 0))
+            m.add_color_stop_rgba(0.55, *cairo_rgb(sky[1], 0.7))
+            m.add_color_stop_rgba(1, *cairo_rgb(sky[1], 0))
             c.set_source(m)
             c.rectangle(0, 420 * sy, w, 120 * sy)
             c.fill()
@@ -1050,10 +1096,11 @@ def draw_moon(c, cx, cy, r, phase, lit, dark):
     c.fill()
 
 
-def set_wallpaper(path=None):
+def set_wallpaper(path=None, transition=None):
     """Show a wallpaper with whatever is installed: awww, then hyprpaper, then swaybg.
 
-    No path: the last one shoji set (Hyprland autostart)."""
+    No path: the last one shoji set (Hyprland autostart). transition="fade": a slow awww fade for
+    the sky's small changes through the day."""
     import shutil
     last = STATE.parent / "shoji-wallpaper"
     if path is None:
@@ -1070,7 +1117,9 @@ def set_wallpaper(path=None):
     _sh.copyfile(path, CACHE / "lock.png")  # hyprlock background
     hypr_wall = HOME / ".local/bin/hypr-wall"
     awww = shutil.which("awww") or (HOME / ".cargo/bin/awww").exists() and str(HOME / ".cargo/bin/awww")
-    if hypr_wall.exists() and awww:
+    if awww and transition == "fade" and not subprocess.run(["pgrep", "-x", "awww-daemon"], stdout=subprocess.DEVNULL).returncode:
+        run(awww, "img", str(path), "--transition-type", "fade", "--transition-duration", "3")
+    elif hypr_wall.exists() and awww:
         run(str(hypr_wall), "set", str(path))
     elif awww:
         daemon = awww + "-daemon"
@@ -1305,6 +1354,16 @@ def main():
     elif cmd == "date-kanji":
         d = datetime.date.today()
         print(f"{kanji_num(d.month)}月{kanji_num(d.day)}日 · {WEEK_K[d.weekday()]}曜日")
+    elif cmd == "senja":  # 夕暮れ: redraw when the sky's tint changes (hypr-widgets asks every 5 min)
+        tint = "%s %s" % sky_tint()
+        mark = CACHE / "sky-tint"
+        try:
+            shown = (STATE.parent / "shoji-wallpaper").read_text().strip()
+        except OSError:
+            shown = ""
+        if shown in ("", str(WALLS / f"shoji-{current()}.png")) and (not mark.exists() or mark.read_text() != tint):
+            write(mark, tint)
+            set_wallpaper(render_wallpaper(current()), transition="fade")
     elif cmd == "moon":  # tonight's phase on the wallpaper (dark palettes; hypr-widgets runs it daily)
         try:
             shown = (STATE.parent / "shoji-wallpaper").read_text().strip()

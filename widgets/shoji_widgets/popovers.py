@@ -1613,6 +1613,8 @@ class Popovers:
         if pr.get("moon_day") != today:  # the wallpaper's moon follows the real phase, once a day
             save_prefs(moon_day=today)
             spawn(SHOJI, "moon")
+        else:  # 夕暮れ: dawn and sunset tint the sky; shoji redraws only when the tint changes
+            spawn(SHOJI, "senja")
         if pr.get("seasonal"):  # a new season (立春, 立夏, 立秋, 立冬): re-apply for its accent
             sid = (sh(SHOJI, "season").split() or [""])[0]
             if sid and pr.get("season") != sid:
