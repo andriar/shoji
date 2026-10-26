@@ -2,6 +2,7 @@
 """Shoji shell widgets that waybar and swaync can't draw (one GTK3 layer-shell process).
 
   osd       ensō ring, top right: volume / mic level, shown even when Do Not Disturb is on.
+  zazen     ensō at the top centre during a shoji-zazen focus session ("zazen<TAB>start|stop").
             hypr-osd writes "icon<TAB>title<TAB>percent<TAB>muted" lines to $FIFO.
   calendar  Koyomi: kanji week, today as a seal; sits left of the swaync control center
             while it is open (follows swaync's SubscribeV2 cc_open signal). Click a day for its
@@ -432,6 +433,79 @@ class Osd:
     def hide(self):
         self.timer = 0
         self.win.hide()
+        return False
+
+
+# ---------------------------------------------------------------- zazen
+class Zazen:
+    """坐禅 ensō at the top centre while a focus session runs (shoji-zazen): it closes as the time
+    passes, the minutes left sit inside it. Click-through; at the end it stops the session."""
+    SIZE = 56
+    STATE = RUN / "shoji-zazen.json"
+
+    def __init__(self):
+        self.win = layer_window("hypr-zazen", Layer.Layer.OVERLAY)
+        Layer.set_anchor(self.win, Layer.Edge.TOP, True)
+        Layer.set_margin(self.win, Layer.Edge.TOP, GAP)
+        self.area = Gtk.DrawingArea()
+        self.area.set_size_request(self.SIZE, self.SIZE)
+        self.area.connect("draw", self.draw)
+        self.win.add(self.area)
+        self.area.show()
+        self.win.connect("realize", click_through)
+        self.state, self.ticking = None, False
+        self.start()  # a session survives a hypr-widgets restart
+
+    def start(self):
+        try:
+            self.state = json.loads(self.STATE.read_text())
+        except (OSError, ValueError):
+            self.state = None
+            return
+        self.win.show()
+        if not self.ticking:
+            self.ticking = True
+            GLib.timeout_add_seconds(1, self.tick)
+
+    def stop(self):
+        self.state = None
+        self.win.hide()
+
+    def left(self):
+        return self.state["minutes"] * 60 - (time.time() - self.state["start"])
+
+    def tick(self):
+        if not self.state:
+            self.ticking = False
+            return False
+        if self.left() <= 0:
+            self.ticking = False
+            spawn(str(HOME / ".local/bin/shoji-zazen"), "stop", "--done")
+            self.stop()
+            return False
+        self.area.queue_draw()
+        return True
+
+    def draw(self, _w, cr):
+        if not self.state:
+            return False
+        t = theme()["tokens"]
+        c = self.SIZE / 2
+        cr.set_source_rgba(*rgba(t["base"], 0.82))
+        cr.arc(c, c, c - 1, 0, 2 * math.pi)
+        cr.fill_preserve()
+        cr.set_source_rgba(*rgba(t["text"], 0.14))
+        cr.set_line_width(1)
+        cr.stroke()
+        total = self.state["minutes"] * 60
+        enso(cr, c, c, c - 9, 1 - max(0, self.left()) / total, rgba(t["accent"]), 3.2,
+             track=rgba(t["text"], 0.10))
+        mins = max(0, math.ceil(self.left() / 60))
+        lay = PangoCairo.create_layout(cr)
+        lay.set_markup(f'<span font_family="Kaisei Opti" weight="bold" size="12pt" foreground="{t["text"]}">{mins}</span>', -1)
+        w, h = lay.get_pixel_size()
+        cr.move_to(c - w / 2, c - h / 2)
+        PangoCairo.show_layout(cr, lay)
         return False
 
 
@@ -1929,7 +2003,7 @@ class Popovers:
 
 
 # ---------------------------------------------------------------- wiring
-def watch_fifo(osd, pops):
+def watch_fifo(osd, pops, zazen):
     if FIFO.exists() and not FIFO.is_fifo():
         FIFO.unlink()
     if not FIFO.exists():
@@ -1952,6 +2026,8 @@ def watch_fifo(osd, pops):
                 pops.toggle(parts[1])
             elif len(parts) == 3 and parts[0] == "pop" and parts[1] in ("launcher", "keys"):
                 pops.open_with(parts[1], parts[2])  # hypr-pop launcher|keys <text>: open with a query
+            elif len(parts) == 2 and parts[0] == "zazen":
+                zazen.start() if parts[1] == "start" else zazen.stop()
             elif len(parts) == 4 and parts[2].isdigit():
                 osd_line = parts
         if osd_line:  # only the newest level matters when the knob spins fast
@@ -2032,7 +2108,7 @@ def main():
                                              Gtk.STYLE_PROVIDER_PRIORITY_USER)
     load_css()
     pops = Popovers()
-    watch_fifo(Osd(), pops)
+    watch_fifo(Osd(), pops, Zazen())
     watch_swaync(Calendar())
     focus = NotifyFocus()  # noqa: F841  (kept alive for its signal and socket)
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, 15, Gtk.main_quit)  # SIGTERM

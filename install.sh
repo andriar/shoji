@@ -36,7 +36,7 @@ for f in .config/waybar .config/swaync .config/fuzzel .config/wlogout/style.css 
          .config/btop/btop.conf .config/qt6ct/qt6ct.conf; do
   [ -e "$HOME/$f" ] && targets+=("$f")
 done
-for f in shoji hypr-widgets hypr-osd hypr-pop shoji-level shoji-clock shoji-ws shoji-media hypr-term audio-switch fuzzel-at-cursor \
+for f in shoji hypr-widgets hypr-osd hypr-pop shoji-level shoji-clock shoji-ws shoji-media shoji-zazen hypr-term audio-switch fuzzel-at-cursor \
          hypr-toggle-app hypr-sysload keep-awake hypr-nightlight hypr-record hypr-wall; do
   [ -e "$BIN/$f" ] && targets+=(".local/bin/$f")
 done

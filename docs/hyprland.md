@@ -25,9 +25,10 @@ hl.config({ general = { border_size = 1,
 
 -- glass behind every shell surface
 hl.layer_rule({ name = "shoji-blur",
-    match = { namespace = "^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop)$" },
+    match = { namespace = "^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen)$" },
     blur = true, ignore_alpha = 0.2 })
 hl.layer_rule({ name = "shoji-osd", match = { namespace = "^hypr-osd$" }, animation = "popin 90%" })
+hl.layer_rule({ name = "shoji-zazen", match = { namespace = "^hypr-zazen$" }, animation = "fade" })
 hl.layer_rule({ name = "shoji-pop", match = { namespace = "^hypr-pop$" }, animation = "popin 96%" })
 hl.layer_rule({ name = "shoji-cal", match = { namespace = "^hypr-calendar$" }, animation = "slide top" })
 -- toasts slide in through swaync CSS; Hyprland's layer animation stretches the stack when it resizes
@@ -46,6 +47,8 @@ hl.bind("SUPER + K", hl.dsp.exec_cmd("~/.local/bin/hypr-focus-or-launch slack gt
         { description = "Apps: Slack" })
 hl.bind("SUPER + B", hl.dsp.exec_cmd("~/.local/bin/hypr-focus-or-launch '^google-chrome$' gtk-launch google-chrome"),
         { description = "Apps: Browser" })
+-- 坐禅 focus session: silent, no bar, other windows dimmed, an ensō counts down (again = stop)
+hl.bind("SUPER + Z", hl.dsp.exec_cmd("~/.local/bin/shoji-zazen toggle"), { description = "System: Zazen (25 min focus)" })
 hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("~/.local/bin/hypr-osd up"),   { locked = true, repeating = true })
 hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("~/.local/bin/hypr-osd down"), { locked = true, repeating = true })
 hl.bind("XF86AudioMute",        hl.dsp.exec_cmd("~/.local/bin/hypr-osd mute"), { locked = true })
@@ -77,8 +80,8 @@ general {
 }
 decoration { rounding = 16 }
 
-layerrule = blur, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop)$
-layerrule = ignorealpha 0.2, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop)$
+layerrule = blur, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen)$
+layerrule = ignorealpha 0.2, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen)$
 layerrule = noanim, ^(swaync-notification-window)$
 
 bind = SUPER SHIFT, T, exec, ~/.local/bin/hypr-pop theme
