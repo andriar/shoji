@@ -18,6 +18,8 @@ folder icons and the wallpaper.
   prefer; click or scroll to switch), the time with the weekday in kanji, Lucide icons, app tray
   icons tucked behind ⋯.
 - **Koyomi** — click the clock for a kanji calendar beside quick settings and notifications.
+- **Terminal greeting** (opt-in, `"greet": true` in prefs.json, then `shoji apply`): one dim line in
+  a new terminal, today's 候 and what is next, e.g. `霜始降 first frost  ·  15:00 Design review`.
 - **Rin (鈴)** — a small synthesised temple bell for critical notifications only
   (`"rin": false` in `~/.config/shoji/prefs.json` silences it).
 - **Zazen (坐禅)** — Super+Z: 25 minutes of focus. Silent, no bar, other windows dimmed, an ensō

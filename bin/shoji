@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Shoji (障子) — one palette file for the whole Hyprland desktop.
 
-Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome|moon|season|date-kanji|weekday-kanji]
+Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome|moon|greet|season|...]
   apply NAME    switch to a palette (no NAME: re-apply the saved one, quiet; Hyprland autostart)
   list          palettes, the current one marked
   toggle        dark <-> light (Hiru, or Yuki for Aizome)
@@ -12,6 +12,7 @@ Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome
   spotify       make Shoji the spicetify theme (then run `spicetify apply` when Spotify can restart)
   chrome        where the Chrome theme is and how to load it
   moon          redraw the wallpaper with tonight's moon phase (dark palettes)
+  greet         one line for a new terminal: today's 候 and what is next (prefs "greet": true)
   season        the season for the seasonal accent: spring 紅梅 / summer 青竹 / autumn 紅葉 / winter 白群
   date-kanji    十月二十四日 · 土曜日   (lock screen)
   weekday-kanji 土                    (bar)
@@ -109,6 +110,56 @@ def contrast(a, b):
     return (la + 0.05) / (lb + 0.05)
 
 
+# 七十二候: the 72 micro-seasons (start dates as in the modern Japanese calendar; ±1 day by year)
+KO = [
+    ((1, 5), "芹乃栄", "Parsley flourishes"), ((1, 10), "水泉動", "Springs thaw"),
+    ((1, 15), "雉始雊", "Pheasants start to call"), ((1, 20), "款冬華", "Butterburs bud"),
+    ((1, 25), "水沢腹堅", "Ice thickens on streams"), ((1, 30), "鶏始乳", "Hens start laying"),
+    ((2, 4), "東風解凍", "East wind melts the ice"), ((2, 9), "黄鶯睍睆", "Bush warblers sing"),
+    ((2, 14), "魚上氷", "Fish rise from the ice"), ((2, 19), "土脉潤起", "Rain moistens the soil"),
+    ((2, 24), "霞始靆", "Mist starts to linger"), ((3, 1), "草木萌動", "Grass and trees bud"),
+    ((3, 6), "蟄虫啓戸", "Hibernating insects surface"), ((3, 11), "桃始笑", "First peach blossoms"),
+    ((3, 16), "菜虫化蝶", "Caterpillars become butterflies"), ((3, 21), "雀始巣", "Sparrows start to nest"),
+    ((3, 26), "桜始開", "First cherry blossoms"), ((3, 31), "雷乃発声", "Distant thunder"),
+    ((4, 5), "玄鳥至", "Swallows return"), ((4, 10), "鴻雁北", "Wild geese fly north"),
+    ((4, 15), "虹始見", "First rainbows"), ((4, 20), "葭始生", "First reeds sprout"),
+    ((4, 25), "霜止出苗", "Last frost, rice seedlings grow"), ((4, 30), "牡丹華", "Peonies bloom"),
+    ((5, 5), "蛙始鳴", "Frogs start singing"), ((5, 10), "蚯蚓出", "Worms surface"),
+    ((5, 15), "竹笋生", "Bamboo shoots sprout"), ((5, 21), "蚕起食桑", "Silkworms feast on mulberry"),
+    ((5, 26), "紅花栄", "Safflowers bloom"), ((5, 31), "麦秋至", "Wheat ripens"),
+    ((6, 6), "蟷螂生", "Praying mantises hatch"), ((6, 11), "腐草為螢", "Fireflies rise from the grass"),
+    ((6, 16), "梅子黄", "Plums turn yellow"), ((6, 21), "乃東枯", "Self-heal withers"),
+    ((6, 26), "菖蒲華", "Irises bloom"), ((7, 1), "半夏生", "Crow-dipper sprouts"),
+    ((7, 7), "温風至", "Warm winds blow"), ((7, 12), "蓮始開", "First lotus blossoms"),
+    ((7, 17), "鷹乃学習", "Hawks learn to fly"), ((7, 23), "桐始結花", "Paulownia sets seed"),
+    ((7, 28), "土潤溽暑", "Damp earth, humid air"), ((8, 2), "大雨時行", "Great rains sometimes fall"),
+    ((8, 7), "涼風至", "Cool winds blow"), ((8, 13), "寒蝉鳴", "Evening cicadas sing"),
+    ((8, 18), "蒙霧升降", "Thick fog descends"), ((8, 23), "綿柎開", "Cotton bolls open"),
+    ((8, 28), "天地始粛", "The heat starts to fade"), ((9, 2), "禾乃登", "Rice ripens"),
+    ((9, 8), "草露白", "Dew glistens white on grass"), ((9, 13), "鶺鴒鳴", "Wagtails sing"),
+    ((9, 18), "玄鳥去", "Swallows leave"), ((9, 23), "雷乃収声", "Thunder ceases"),
+    ((9, 28), "蟄虫坏戸", "Insects hole up underground"), ((10, 3), "水始涸", "Fields are drained"),
+    ((10, 8), "鴻雁来", "Wild geese return"), ((10, 13), "菊花開", "Chrysanthemums bloom"),
+    ((10, 18), "蟋蟀在戸", "Crickets chirp by the door"), ((10, 23), "霜始降", "First frost"),
+    ((10, 28), "霎時施", "Light rains sometimes fall"), ((11, 2), "楓蔦黄", "Maples and ivy turn yellow"),
+    ((11, 7), "山茶始開", "Camellias bloom"), ((11, 12), "地始凍", "The land starts to freeze"),
+    ((11, 17), "金盞香", "Daffodils bloom"), ((11, 22), "虹蔵不見", "Rainbows hide"),
+    ((11, 27), "朔風払葉", "North wind strips the leaves"), ((12, 2), "橘始黄", "Tachibana citrus turns yellow"),
+    ((12, 7), "閉塞成冬", "Cold sets in, winter begins"), ((12, 12), "熊蟄穴", "Bears start hibernating"),
+    ((12, 16), "鱖魚群", "Salmon gather upstream"), ((12, 21), "乃東生", "Self-heal sprouts"),
+    ((12, 26), "麋角解", "Deer shed their antlers"), ((12, 31), "雪下出麦", "Wheat sprouts under snow"),
+]
+
+
+def micro_season(d):
+    """(kanji, English) of the 候 that d falls in."""
+    current = KO[-1]  # 1–4 January still belong to last year's 雪下出麦
+    for start, kanji, english in KO:
+        if (d.month, d.day) >= start:
+            current = (start, kanji, english)
+    return current[1], current[2]
+
+
 # 季節 seasonal accent (prefs "seasonal": true): the accent becomes the season's traditional colour,
 # shifted in lightness until it holds 3:1 on the palette's ground. Changes at 立春, 立夏, 立秋, 立冬.
 SEASONS = [((2, 4), "spring", "紅梅", "#e16b8c"), ((5, 5), "summer", "青竹", "#00896c"),
@@ -124,6 +175,13 @@ def season(day=None):
         if (d.month, d.day) >= start:
             current = (start, *rest)
     return current[1:]
+
+
+def prefs_get(key, default=None):
+    try:
+        return json.loads(PREFS.read_text()).get(key, default)
+    except (OSError, ValueError):
+        return default
 
 
 def seasonal_on():
@@ -304,7 +362,9 @@ def generate(name):
           f",fg:{t['text']},header:{t['muted']},info:{t['muted']},pointer:{t['accent']}"
           f",marker:{t['accent']},fg+:{t['text']},prompt:{t['accent']},hl+:{t['accent']}"
           f",selected-bg:{t['surface1']},border:{t['surface2']},label:{t['text']}\"\n"
-          "export BAT_THEME=ansi\n")
+          "export BAT_THEME=ansi\n"
+          + ('[[ $- == *i* && -z "$CLAUDECODE" ]] && command -v shoji >/dev/null && shoji greet\n'
+             if prefs_get("greet") else ""))
     write(CFG / "shoji/fzf.sh", f"# {header}\n. {CFG / 'shoji/shell.sh'}\n")  # older ~/.zshrc lines
 
     # delta feature: [include] path = ~/.config/shoji/delta.gitconfig, then [delta] features = shoji
@@ -1076,6 +1136,28 @@ def kanji_num(n):
     return (KNUM[tens] if tens > 1 else "") + "十" + (KNUM[ones] if ones else "")
 
 
+def cmd_greet():
+    """One quiet line for a new terminal: today's 候 and what is next today (from the agenda cache
+    hypr-widgets keeps). Opt-in: prefs "greet": true (shell.sh calls it)."""
+    d = datetime.date.today()
+    kanji, english = micro_season(d)
+    nxt = ""
+    try:
+        cache = json.loads((CACHE / "today.json").read_text())
+        if cache.get("day") == d.isoformat():
+            now = datetime.datetime.now().strftime("%H:%M")
+            timed = [i for i in cache["items"] if not i["task"] and i["when"] not in ("", "終日") and i["when"] >= now]
+            if timed:
+                nxt = f"  ·  {timed[0]['when']} {timed[0]['title']}"
+            elif cache["items"]:
+                nxt = f"  ·  {len(cache['items'])} today"
+            else:
+                nxt = "  ·  nothing scheduled"
+    except (OSError, ValueError, KeyError):
+        pass
+    print(f"\033[2m{kanji} {english.lower()}{nxt}\033[0m")
+
+
 def cmd_doctor(name):
     t = tokens(name)
     print(f"{PALETTES[name]['name']} on {t['base']}")
@@ -1134,6 +1216,8 @@ def main():
         ours = str(WALLS / f"shoji-{current()}.png")
         if PALETTES[current()]["dark"] and shown in ("", ours):  # never over a wallpaper you picked
             set_wallpaper(render_wallpaper(current()))
+    elif cmd == "greet":
+        cmd_greet()
     elif cmd == "season":
         sid, kanji, colour = season()
         print(f"{sid} {kanji} {colour}")
