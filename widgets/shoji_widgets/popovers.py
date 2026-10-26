@@ -937,6 +937,133 @@ class Keys(Launcher):
             sh("hyprctl", "dispatch", a["payload"])
 
 
+class Switch(Popover):
+    """替 Alt+Tab: cards for the windows on every workspace, most recently used first, the one
+    before the current window selected. Hold Alt and press Tab (Shift+Tab back, arrows too); let
+    go of Alt to go there. A quick Alt+Tab tap switches straight to the previous window."""
+    name = "switch"
+    width = 760
+    MAX = 7
+    KANJI = "一二三四五六七八九十"
+
+    def __init__(self, manager):
+        super().__init__(manager, anchor_right=False)
+        Layer.set_margin(self.win, Layer.Edge.TOP, 300)
+        Layer.set_keyboard_mode(self.win, Layer.KeyboardMode.EXCLUSIVE)
+        self.win.connect("key-release-event", self.on_release)
+        self.icons, self.cards, self.at = {}, [], 0
+
+    def windows(self):
+        try:
+            wins = json.loads(sh("hyprctl", "clients", "-j") or "[]")
+        except ValueError:
+            return []
+        wins = [w for w in wins if w.get("mapped") and w["workspace"]["id"] != -1]
+        return sorted(wins, key=lambda w: w["focusHistoryID"])[:self.MAX]
+
+    def app_icon(self, cls):
+        """The window class's icon: the .desktop whose StartupWMClass is that class, else one named
+        after it, else the first search hit (ghostty's class is com.mitchellh.ghostty, VS Code's code)."""
+        if cls not in self.icons:
+            gicon = None
+            for app in Gio.AppInfo.get_all():
+                wm = app.get_startup_wm_class() if isinstance(app, Gio.DesktopAppInfo) else None
+                if wm and wm.lower() == cls.lower() and app.get_icon():
+                    gicon = app.get_icon()
+                    break
+            idents = [] if gicon else [f"{cls}.desktop", f"{cls.lower()}.desktop", f"{cls.split('.')[-1]}.desktop"] + \
+                [r for hits in Gio.DesktopAppInfo.search(cls.split(".")[-1]) for r in hits][:3]
+            for ident in idents:
+                try:
+                    info = Gio.DesktopAppInfo.new(ident)
+                except TypeError:
+                    info = None
+                if info and info.get_icon():
+                    gicon = info.get_icon()
+                    break
+            self.icons[cls] = gicon
+        return self.icons[cls]
+
+    def build(self):
+        self.wins = self.windows()
+        row = Gtk.Box(spacing=10, halign=Gtk.Align.CENTER)
+        self.cards = []
+        for w in self.wins:
+            card = Gtk.Button()
+            card.get_style_context().add_class("switch-card")
+            v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            gicon = self.app_icon(w["class"])
+            img = Gtk.Image.new_from_gicon(gicon, Gtk.IconSize.DIALOG) if gicon else label(icon("app-window"), "icon")
+            if gicon:
+                img.set_pixel_size(40)
+            v.pack_start(img, False, False, 2)
+            name = label(w["class"].split(".")[-1].replace("-", " ").title(), "app-name", xalign=0.5)
+            name.set_ellipsize(Pango.EllipsizeMode.END)
+            v.pack_start(name, False, False, 0)
+            title = label(w["title"] or w["class"], "desc", xalign=0.5)
+            title.set_ellipsize(Pango.EllipsizeMode.END)
+            title.set_max_width_chars(14)
+            v.pack_start(title, False, False, 0)
+            ws = w["workspace"]["id"]
+            v.pack_start(label(self.KANJI[ws - 1] if 1 <= ws <= 10 else "·", "wk", xalign=0.5), False, False, 0)
+            card.add(v)
+            card.connect("clicked", lambda _b, i=len(self.cards): (self.pick(i), self.go()))
+            row.pack_start(card, False, False, 0)
+            self.cards.append(card)
+        if not self.cards:
+            row.pack_start(label("No windows", "muted"), False, False, 8)
+        self.box.pack_start(row, False, False, 4)
+        self.pick(1 if len(self.cards) > 1 else 0)
+
+    def pick(self, i):
+        if not self.cards:
+            return
+        self.at = i % len(self.cards)
+        for j, c in enumerate(self.cards):
+            (c.get_style_context().add_class if j == self.at else c.get_style_context().remove_class)("sel")
+
+    def again(self):  # Alt+Tab pressed again while open (Hyprland's bind fired)
+        self.pick(self.at + 1)
+
+    def go(self):
+        if self.cards:
+            addr = self.wins[self.at]["address"]
+            sh("hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{addr}" }})')
+        self.manager.close()
+
+    def on_key(self, w, ev):
+        back = ev.keyval in (Gdk.KEY_ISO_Left_Tab, Gdk.KEY_Left) or (
+            ev.keyval == Gdk.KEY_Tab and ev.state & Gdk.ModifierType.SHIFT_MASK)
+        if back:
+            self.pick(self.at - 1)
+            return True
+        if ev.keyval in (Gdk.KEY_Tab, Gdk.KEY_Right):
+            self.pick(self.at + 1)
+            return True
+        if ev.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_space):
+            self.go()
+            return True
+        return super().on_key(w, ev)
+
+    def on_release(self, _w, ev):
+        if ev.keyval in (Gdk.KEY_Alt_L, Gdk.KEY_Alt_R, Gdk.KEY_Meta_L, Gdk.KEY_Meta_R):
+            self.go()
+            return True
+        return False
+
+    def show(self):
+        super().show()
+        GLib.timeout_add(160, self.quick_tap)
+
+    def quick_tap(self):
+        """Alt was let go before the cards appeared: switch to the previous window right away."""
+        if self.win.get_visible():
+            mods = Gdk.Keymap.get_for_display(Gdk.Display.get_default()).get_modifier_state()
+            if not mods & Gdk.ModifierType.MOD1_MASK:
+                self.go()
+        return False
+
+
 class Clipboard(Popover):
     """写 Clipboard history (cliphist): newest first, type to search, Enter or a click puts an entry
     back on the clipboard. Each row has a delete button (or press Delete on the selected one);
@@ -1316,11 +1443,15 @@ class Popovers:
         self.items["keys"] = Keys(self)
         self.items["media"] = Media(self)
         self.items["clipboard"] = Clipboard(self)
+        self.items["switch"] = Switch(self)
         self.open = None
         GLib.timeout_add_seconds(300, self.sun_tick)
 
     def toggle(self, name):
         if name not in self.items:
+            return
+        if self.open == name and hasattr(self.items[name], "again"):  # Alt+Tab again: next card
+            self.items[name].again()
             return
         if self.open == name:
             self.close()

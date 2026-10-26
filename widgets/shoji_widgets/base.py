@@ -212,6 +212,12 @@ list { background: transparent; }
 .app-row:hover { background: @hover; }
 .app-row:selected { background: alpha(@text, 0.10); }
 .app-row .app-name { font-size: 13px; color: @text; }
+/* Alt+Tab cards: the selected one sealed with an accent ring */
+.switch-card { background: @group; background-image: none; border: none; box-shadow: none; border-radius: 12px;
+               min-width: 92px; padding: 10px 8px; }
+.switch-card:hover { background: @hover; }
+.switch-card.sel { box-shadow: inset 0 0 0 2px @accent; background: alpha(@text, 0.10); }
+.switch-card .desc { font-size: 10.5px; color: @muted; }
 .app-row .desc { font-size: 10.5px; color: @muted; }
 
 /* shortcuts sheet */
