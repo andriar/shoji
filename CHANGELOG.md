@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.1 — 2026-10-27
+
+- Zazen no longer turns the bar inside out: it asks Hyprland whether the bar is showing before it
+  toggles it (a hidden waybar drops to the bottom layer). A waybar restart in the middle of a
+  session used to leave Super+Z showing the bar on start and hiding it on stop.
+- Preferences is easy to reach: **Super+,**, listed in Super+/, and a click on the drawer's Focus
+  card (Esc returns to the drawer).
+- Hot edge: one strip per monitor, kept in step when monitors come and go; the pointer has to rest
+  still for 500 ms (any movement restarts the wait, a held button cancels, fullscreen skips). The
+  drawer then ignores clicks for 600 ms, so a click aimed at the window below never lands on a card.
+- Counts in words, singular and plural in all three languages ("13 of 14 running" instead of
+  "13/14"); Homelab says "Checking…" once it is set up but before its first reading.
+
 ## 0.8.0 — 2026-10-27
 
 - 家 Homelab: `shoji-homelab` watches Docker (by compose stack), systemd units, public endpoints,
