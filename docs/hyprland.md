@@ -62,6 +62,7 @@ hl.layer_rule({ name = "shoji-toasts", match = { namespace = "^swaync-notificati
 
 -- keys
 hl.bind("SUPER + SHIFT + T", hl.dsp.exec_cmd("~/.local/bin/hypr-pop theme"))
+hl.bind("SUPER + comma",     hl.dsp.exec_cmd("~/.local/bin/hypr-pop prefs"), { description = "System: Preferences" })
 hl.bind("SUPER + Space",     hl.dsp.exec_cmd("~/.local/bin/hypr-pop launcher"))
 -- ghostty opens in ~70 ms instead of ~1 s: a D-Bus action on the running instance
 hl.bind("SUPER + Return",    hl.dsp.exec_cmd("~/.local/bin/hypr-term"), { description = "Apps: Open terminal" })

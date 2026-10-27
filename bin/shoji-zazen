@@ -58,6 +58,23 @@ def hypr_option(name):
     return v.get("bool", v.get("int", v.get("float")))
 
 
+def bar_shown(layers_json=None):
+    """Whether waybar is on screen, asked of Hyprland: SIGUSR1 only toggles, so trusting what was
+    last sent turns the bar inside out after a waybar restart mid-session. A hidden bar drops to
+    the bottom layer (Shoji's bar lives on top). None when no bar is running."""
+    try:
+        layers = json.loads(layers_json if layers_json is not None else run("hyprctl", "layers", "-j") or "{}")
+    except ValueError:
+        return None
+    levels = [int(lvl) for mon in layers.values() for lvl, ls in mon.get("levels", {}).items()
+              for layer in ls if layer.get("namespace") == "waybar"]
+    return max(levels) >= 2 if levels else None
+
+
+def toggle_bar():
+    run("pkill", "-SIGUSR1", "-x", "waybar")
+
+
 def tell_widgets(line):
     if FIFO.is_fifo():
         fd = os.open(FIFO, os.O_WRONLY | os.O_NONBLOCK)
@@ -83,13 +100,13 @@ def start(minutes):
         "dnd": run("swaync-client", "-D") == "true",
         "dim": hypr_option("decoration:dim_inactive"),
         "dim_strength": hypr_option("decoration:dim_strength"),
-        "bar": subprocess.run(["pgrep", "-x", "waybar"], capture_output=True).returncode == 0,
+        "bar": bar_shown() is True,   # true: this session hid the bar, so the stop brings it back
     }
     STATE.write_text(json.dumps(state))
     run("swaync-client", "-dn")
     run("hyprctl", "eval", "hl.config({ decoration = { dim_inactive = true, dim_strength = 0.35 } })")
     if state["bar"]:
-        run("pkill", "-SIGUSR1", "-x", "waybar")  # SIGUSR1 toggles the bar's visibility
+        toggle_bar()
     tell_widgets("zazen\tstart")
 
 
@@ -129,8 +146,8 @@ def stop(done=False):
     dim = "true" if state.get("dim") else "false"
     strength = state.get("dim_strength") or 0.5
     run("hyprctl", "eval", f"hl.config({{ decoration = {{ dim_inactive = {dim}, dim_strength = {strength} }} }})")
-    if state.get("bar"):
-        run("pkill", "-SIGUSR1", "-x", "waybar")
+    if state.get("bar") and bar_shown() is False:
+        toggle_bar()
     minutes = round((time.time() - state["start"]) / 60)
     if done:
         LOG.parent.mkdir(parents=True, exist_ok=True)

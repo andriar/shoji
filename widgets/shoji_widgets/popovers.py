@@ -1989,14 +1989,15 @@ class Homelab(Listing):
         refresh.get_style_context().add_class("chip")
         refresh.connect("clicked", lambda *_: self.fetch("--stats"))
         self.header(T("Homelab"), refresh)
-        if not data:
-            self.box.pack_start(label(T("Not set up yet: run {cmd}").format(cmd="shoji-homelab init"), "muted"),
-                                False, False, 6)
+        if not data:   # set up but not collected yet (first run): say it is on its way
+            set_up = HL and HL.config() is not None
+            text = T("Checking…") if set_up else T("Not set up yet: run {cmd}").format(cmd="shoji-homelab init")
+            self.box.pack_start(label(text, "muted"), False, False, 6)
             self.scroll = None
             return
         cs, now = data["containers"], time.time()
         down = sum(p["level"] == "bad" for p in data["problems"])
-        running = f"{sum(c['state'] == 'running' for c in cs)}/{len(cs)}"
+        running = T("{n} of {total} running").format(n=sum(c["state"] == "running" for c in cs), total=len(cs))
         summary = Gtk.Box(spacing=0)
         summary.pack_start(label((T("{n} down").format(n=down) if down else T("all well")) + f" · {running}",
                                  "mono", "hl-summary", "bad" if down else "ok"), False, False, 0)

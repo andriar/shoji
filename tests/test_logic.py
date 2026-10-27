@@ -771,6 +771,64 @@ class ZazenLengths(unittest.TestCase):
             self.assertEqual(z.rest_minutes(4), 10)
 
 
+class HotEdge(unittest.TestCase):
+    def test_a_still_pointer_opens_a_pass_or_a_drag_does_not(self):
+        from shoji_widgets import drawer
+        from gi.repository import Gdk, GLib
+        opened, guarded = [], []
+
+        class M:
+            open = None
+            items = {"drawer": type("D", (), {"guard": lambda self: guarded.append(1)})()}
+
+            def toggle(self, name):
+                opened.append(name)
+        drawer.prefs = lambda: {"drawer_edge": False}   # no real strips on the screen
+        edge = drawer.EdgeTrigger(M())
+        self.assertEqual(edge.wins, [])
+        ev = type("E", (), {"state": Gdk.ModifierType(0)})()
+        edge.wait(None, ev)
+        first = edge.timer
+        edge.wait(None, ev)                               # it moved: the wait starts again
+        self.assertNotEqual(edge.timer, first)
+        drag = type("E", (), {"state": Gdk.ModifierType.BUTTON1_MASK})()
+        edge.wait(None, drag)                             # a held button cancels
+        self.assertEqual(edge.timer, 0)
+        drawer.sh = lambda *a: '{"fullscreen": 2}'
+        edge.fire()
+        self.assertEqual(opened, [])                      # a fullscreen game keeps its edge
+        drawer.sh = lambda *a: '{"fullscreen": 0}'
+        edge.fire()
+        self.assertEqual(opened, ["drawer"])
+        self.assertEqual(guarded, [1])                    # and its first click is shielded
+
+    def test_the_shield_eats_a_click_then_goes(self):
+        from shoji_widgets import drawer
+        from gi.repository import GLib
+        d = drawer.Drawer.__new__(drawer.Drawer)
+        d.shield = type("S", (), {"visible": False,
+                                  "show": lambda s: setattr(s, "visible", True),
+                                  "hide": lambda s: setattr(s, "visible", False)})()
+        d.GUARD_MS = 10
+        d.guard()
+        self.assertTrue(d.shield.visible)
+        ctx = GLib.MainContext.default()
+        deadline = GLib.get_monotonic_time() + 500_000
+        while d.shield.visible and GLib.get_monotonic_time() < deadline:
+            ctx.iteration(False)
+        self.assertFalse(d.shield.visible)
+
+
+class ZazenBar(unittest.TestCase):
+    def test_the_bar_is_read_from_hyprland_not_from_what_was_sent(self):
+        z = load("shoji-zazen")
+        layers = lambda lvl: json.dumps({"DP-3": {"levels": {lvl: [{"namespace": "waybar"}], "3": []}}})
+        self.assertTrue(z.bar_shown(layers("2")))          # on top: showing
+        self.assertFalse(z.bar_shown(layers("1")))         # dropped to the bottom: hidden
+        self.assertIsNone(z.bar_shown('{"DP-3": {"levels": {"2": []}}}'))   # no bar running
+        self.assertIsNone(z.bar_shown("not json"))
+
+
 class Css(unittest.TestCase):
     def test_the_stylesheet_parses(self):
         """One unclosed comment makes GTK drop rules from there on; every surface would lose its look."""

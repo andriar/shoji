@@ -72,7 +72,8 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
 - Notifications stack per app like iOS; clicking one takes you to its window and workspace.
 
 **Calm on purpose**
-- **Zazen** (Super+Z): 25 minutes of focus (or 50 · 10, 90 · 20 in Preferences). Silent, no bar,
+- **Zazen** (Super+Z): 25 minutes of focus (or 50 · 10, 90 · 20 in Preferences, Super+comma or
+  a click on the drawer's Focus card). Silent, no bar,
   other windows dimmed, an ensō closes at the top. At the end everything comes back, you hear how
   many notifications waited, and a rest (休) follows, longer every 4th time. The **rest card**
   dims the desktop and offers one thing to do away from the screen — stretch your neck, look far
@@ -277,6 +278,7 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 | `Super+Z` | zazen: 25 minutes of focus (again = stop) |
 | `Super+T` · `Super+[` / `]` | tab windows · previous / next tab |
 | `Super+Shift+T` | theme manager |
+| `Super+,` | Preferences: zazen and rest lengths, motion, sounds… |
 | `Super+Shift+M` | reduced motion: Hyprland, GTK and Shoji stop animating (again = back) |
 | `PrtSc` / `Super+Shift+P` | screenshot an area (`Super+Ctrl+P`: the screenshot menu) |
 | volume keys, keyboard knob | ensō OSD |

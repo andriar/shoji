@@ -200,8 +200,9 @@ class MediaCard(Card):
 
 
 class FocusCard(Card):
-    """座 Today's zazen: sessions and minutes; the button starts 25 minutes (or stops a running one)."""
-    name, title, icon = "focus", "Focus", "timer"
+    """座 Today's zazen: sessions and minutes; the button starts 25 minutes (or stops a running one).
+    The card itself opens Preferences, where the lengths are set."""
+    name, title, icon, opens = "focus", "Focus", "timer", "prefs"
     sizes = ("small", "medium")
     ZAZEN = str(HOME / ".local/bin/shoji-zazen")
     LOG = HOME / ".local/state/shoji-zazen.log"   # one line per finished session: date minutes
@@ -247,7 +248,7 @@ class FocusCard(Card):
                       + (f" · 休 ×{taken}" if taken else ""))
         else:
             self.text(right, state if state != "off" else T("{m} min today").format(m=minutes))
-            self.text(right, T("{n} rests taken").format(n=taken))
+            self.text(right, T("{n} rest taken" if taken == 1 else "{n} rests taken").format(n=taken))
 
 
 class ClipboardCard(Card):
@@ -362,6 +363,25 @@ class Drawer(Popover):
         self.picked = None   # ✎ without a mouse drag: the card clicked first, waiting for where it goes
         self.ticking = False
         self.scroll = None
+        # opened by the hot edge, the drawer slides in under a pointer that was aiming at something
+        # else: for GUARD_MS a shield over the cards takes the click meant for the window below
+        self.win.remove(self.box)
+        over = Gtk.Overlay()
+        over.add(self.box)
+        self.shield = Gtk.EventBox()
+        self.shield.set_visible_window(False)
+        self.shield.set_no_show_all(True)
+        self.shield.connect("button-press-event", lambda *_: True)
+        self.shield.connect("button-release-event", lambda *_: True)
+        over.add_overlay(self.shield)
+        over.show()
+        self.win.add(over)
+
+    GUARD_MS = 600
+
+    def guard(self):
+        self.shield.show()
+        GLib.timeout_add(self.GUARD_MS, lambda: self.shield.hide() or False)
 
     # ---- which cards, in which order, at which size
     def ordered(self):
@@ -628,30 +648,54 @@ BUILT_IN = [HomelabCard, MediaCard, VpnCard, MachineCard, FocusCard, ClipboardCa
 
 
 class EdgeTrigger:
-    """The right screen edge opens the drawer: rest the pointer there for DWELL_MS. Only the middle
-    40 % of the edge listens (scroll bars and window corners keep the rest), never while a mouse
-    button is held (dragging a window) or a window is fullscreen (a game, a film)."""
-    DWELL_MS = 300
+    """The right screen edge opens the drawer: rest the pointer still on it for DWELL_MS. One strip
+    per monitor (kept in step when monitors come and go), on the middle 40 % of the edge. A strip
+    sits over the right edge of a maximised window, its scroll bar included, so a pass does not
+    count: any movement starts the wait again, a held button (dragging, scrolling the bar) cancels
+    it, and a fullscreen window (a game, a film) never opens it."""
+    DWELL_MS = 500
+    SHARE = 0.4
 
     def __init__(self, manager):
-        self.manager, self.timer = manager, 0
-        self.win = layer_window("hypr-edge", Layer.Layer.OVERLAY)
-        Layer.set_anchor(self.win, Layer.Edge.RIGHT, True)
-        Layer.set_exclusive_zone(self.win, -1)
-        mon = Gdk.Display.get_default().get_monitor(0)
-        self.win.set_size_request(1, int((mon.get_geometry().height if mon else 1080) * 0.4))
-        self.win.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-        self.win.connect("enter-notify-event", self.enter)
-        self.win.connect("leave-notify-event", self.leave)
-        if prefs().get("drawer_edge", True):
-            self.win.show()
+        self.manager, self.timer, self.wins = manager, 0, []
+        display = Gdk.Display.get_default()
+        display.connect("monitor-added", lambda *_: self.build())
+        display.connect("monitor-removed", lambda *_: self.build())
+        self.build()
 
-    def enter(self, _w, ev):
-        held = ev.state & (Gdk.ModifierType.BUTTON1_MASK | Gdk.ModifierType.BUTTON2_MASK | Gdk.ModifierType.BUTTON3_MASK)
-        if not held and not self.timer:
+    def build(self):
+        for w in self.wins:
+            w.destroy()
+        self.wins = []
+        if not prefs().get("drawer_edge", True):
+            return
+        display = Gdk.Display.get_default()
+        for i in range(display.get_n_monitors()):
+            mon = display.get_monitor(i)
+            win = layer_window("hypr-edge", Layer.Layer.OVERLAY)
+            Layer.set_monitor(win, mon)
+            Layer.set_anchor(win, Layer.Edge.RIGHT, True)
+            Layer.set_exclusive_zone(win, -1)
+            win.set_size_request(1, int(mon.get_geometry().height * self.SHARE))
+            win.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
+                           | Gdk.EventMask.POINTER_MOTION_MASK)
+            win.connect("enter-notify-event", self.wait)
+            win.connect("motion-notify-event", self.wait)
+            win.connect("leave-notify-event", self.cancel)
+            win.show()
+            self.wins.append(win)
+
+    @staticmethod
+    def held(ev):
+        return ev.state & (Gdk.ModifierType.BUTTON1_MASK | Gdk.ModifierType.BUTTON2_MASK | Gdk.ModifierType.BUTTON3_MASK)
+
+    def wait(self, _w, ev):
+        """(Re)start the wait: the pointer has to stay still on the edge for the whole DWELL_MS."""
+        self.cancel()
+        if not self.held(ev):
             self.timer = GLib.timeout_add(self.DWELL_MS, self.fire)
 
-    def leave(self, *_):
+    def cancel(self, *_):
         if self.timer:
             GLib.source_remove(self.timer)
             self.timer = 0
@@ -664,4 +708,5 @@ class EdgeTrigger:
             full = 0
         if not full and self.manager.open != "drawer":
             self.manager.toggle("drawer")
+            self.manager.items["drawer"].guard()
         return False
