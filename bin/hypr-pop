@@ -1,11 +1,29 @@
 #!/usr/bin/env bash
 # Open (or close, if already open) a Shoji popover drawn by hypr-widgets.
-# Usage: hypr-pop audio|network|bluetooth|battery|media|homelab|clipboard|switch|theme|prefs|launcher [query]|keys [query]
-# Falls back to the old tools when hypr-widgets is not running.
-fifo=${XDG_RUNTIME_DIR:-/tmp}/hypr-osd.fifo
-pid=$(cat "${XDG_RUNTIME_DIR:-/tmp}/hypr-widgets.pid" 2>/dev/null)
-if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ -p "$fifo" ]; then
-  if [ -n "$2" ]; then printf 'pop\t%s\t%s\n' "$1" "$2" > "$fifo"; else printf 'pop\t%s\n' "$1" > "$fifo"; fi
+# Usage: hypr-pop audio|network|bluetooth|battery|media|homelab|clipboard|switch|theme|prefs|launcher [query]|keys [query]|close
+# Falls back to the old tools when hypr-widgets is not running, or running but not answering:
+# a live pid only proves the process exists, so a ping through the fifo proves its reader still works.
+run=${XDG_RUNTIME_DIR:-/tmp}
+fifo=$run/hypr-osd.fifo
+pid=$(cat "$run/hypr-widgets.pid" 2>/dev/null)
+
+answers() {
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ -p "$fifo" ] || return 1
+  local ack="$run/hypr-pop-ack.$$" i
+  find "$run" -maxdepth 1 -name "hypr-pop-ack.*" -mmin +1 -delete 2>/dev/null   # answers that came after we gave up
+  rm -f "$ack"
+  exec 3<>"$fifo"   # read+write open never blocks, even with no reader
+  printf 'ping\t%s\n' "$ack" >&3
+  for i in $(seq 15); do   # up to ~300 ms
+    [ -e "$ack" ] && { rm -f "$ack"; return 0; }
+    sleep 0.02
+  done
+  logger -t hypr-pop "hypr-widgets (pid $pid) did not answer a ping, falling back"
+  return 1
+}
+
+if answers; then
+  if [ -n "$2" ]; then printf 'pop\t%s\t%s\n' "$1" "$2" >&3; else printf 'pop\t%s\n' "$1" >&3; fi
   exit 0
 fi
 case "$1" in

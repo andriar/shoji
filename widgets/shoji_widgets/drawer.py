@@ -672,6 +672,8 @@ class EdgeTrigger:
         display = Gdk.Display.get_default()
         for i in range(display.get_n_monitors()):
             mon = display.get_monitor(i)
+            if mon is None:   # mid hotplug/resume the index can outrun the monitor list
+                continue
             win = layer_window("hypr-edge", Layer.Layer.OVERLAY)
             Layer.set_monitor(win, mon)
             Layer.set_anchor(win, Layer.Edge.RIGHT, True)

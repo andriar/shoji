@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- The shell survives a monitor that drops off DisplayPort when it sleeps: popovers no longer die
+  with the widgets' command reader. One bad command used to remove the fifo watch for good, so
+  Super+Space and every popover went silent while the process looked alive. Each command is now
+  guarded, `sh()` decodes with `errors="replace"` (a clipboard entry cut mid-character crashed the
+  Clipboard popover), and the edge strips skip a monitor that is not there yet.
+- `hypr-pop` pings the widgets before it trusts the pid and falls back to fuzzel and friends when
+  nothing answers within about 300 ms.
+- The popover backdrop starts below the bar, so one click on another bar button switches popovers;
+  opening a popover closes swaync's panel, a popover closes on a workspace change, and the bell and
+  the bar's plain toggles close an open popover first (`hypr-pop close`).
+- With the island on, the Koyomi pair hangs under the bell at the right instead of the centre line.
+
 ## 0.8.1 — 2026-10-27
 
 - Zazen no longer turns the bar inside out: it asks Hyprland whether the bar is showing before it

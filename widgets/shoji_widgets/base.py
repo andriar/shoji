@@ -248,7 +248,7 @@ def name_icons(root):
 
 
 def sh(*cmd):
-    return subprocess.run(cmd, capture_output=True, text=True).stdout.strip()
+    return subprocess.run(cmd, capture_output=True, text=True, errors="replace").stdout.strip()
 
 
 def spawn(*cmd):

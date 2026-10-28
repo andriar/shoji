@@ -44,7 +44,7 @@ cfg = {
                         "rewrite": {"(.*) — Mozilla Firefox": "$1", "(.*) - Google Chrome": "$1"}},
 
     "custom/clock": {"exec": f"{BIN}/shoji-clock", "return-type": "json", "interval": 10,
-                     "on-click": "swaync-client -t -sw"},
+                     "on-click": f"{BIN}/hypr-pop close; swaync-client -t -sw"},
     "custom/notification": {
         "format": "{icon}", "return-type": "json", "exec": "swaync-client -swb", "escape": True, "tooltip": False,
         # bell = nothing new, bell with a dot = unread, crossed bell = silent (do not disturb)
@@ -52,13 +52,13 @@ cfg = {
                          "inhibited-notification": L("bell-dot"), "dnd-inhibited-notification": L("bell-off"),
                          "none": L("bell"), "inhibited-none": L("bell"),
                          "dnd-none": L("bell-off"), "dnd-inhibited-none": L("bell-off")},
-        "on-click": "swaync-client -t -sw", "on-click-right": "swaync-client -d -sw",
+        "on-click": f"{BIN}/hypr-pop close; swaync-client -t -sw", "on-click-right": "swaync-client -d -sw",
     },
 
     "custom/record": {"exec": f"{BIN}/hypr-record status", "return-type": "json",
-                      "interval": "once", "signal": 9, "on-click": f"{BIN}/hypr-record toggle"},
+                      "interval": "once", "signal": 9, "on-click": f"{BIN}/hypr-pop close; {BIN}/hypr-record toggle"},
     "custom/system": {"exec": f"{BIN}/hypr-sysload", "return-type": "json", "interval": 5,
-                      "on-click": f"{BIN}/hypr-toggle-app 'dev\\.hypr\\.btop' ghostty --class=dev.hypr.btop --confirm-close-surface=false -e btop"},
+                      "on-click": f"{BIN}/hypr-pop close; {BIN}/hypr-toggle-app 'dev\\.hypr\\.btop' ghostty --class=dev.hypr.btop --confirm-close-surface=false -e btop"},
     # a Bluetooth device running low (shoji-btbat prints nothing above 20 %); click = its popover
     "custom/btbat": {"exec": f"{BIN}/shoji-btbat", "return-type": "json", "interval": 120,
                      "on-click": f"{BIN}/hypr-pop bluetooth"},
@@ -67,7 +67,7 @@ cfg = {
     # Bluetooth headset mic: the headset must leave music mode (A2DP) for call mode (HFP) to be heard;
     # hidden with no headset, muted while in music mode, accent while the headset mic is the input
     "custom/headsetmic": {"exec": f"{BIN}/shoji-headset-mic status", "return-type": "json",
-                          "interval": 10, "signal": 18, "on-click": f"{BIN}/shoji-headset-mic toggle"},
+                          "interval": 10, "signal": 18, "on-click": f"{BIN}/hypr-pop close; {BIN}/shoji-headset-mic toggle"},
     # homelab: a quiet server glyph (a reading: 11 px), the number down beside it in the alert
     # colour; two modules so each label holds one font and sits on the bar's centre (like the
     # volume ensō + number). Hidden until ~/.config/shoji/homelab.json exists.
@@ -80,9 +80,9 @@ cfg = {
                          "on-click-right": "pkill -RTMIN+13 -x waybar"},
     # on/off switches live in the Koyomi panel; the bar only shows the ones that are on
     "custom/keepawake": {"exec": f"{BIN}/keep-awake status", "return-type": "json",
-                         "interval": "once", "signal": 12, "on-click": f"{BIN}/keep-awake toggle"},
+                         "interval": "once", "signal": 12, "on-click": f"{BIN}/hypr-pop close; {BIN}/keep-awake toggle"},
     "custom/nightlight": {"exec": f"{BIN}/hypr-nightlight status", "return-type": "json",
-                          "interval": "once", "signal": 8, "on-click": f"{BIN}/hypr-nightlight toggle"},
+                          "interval": "once", "signal": 8, "on-click": f"{BIN}/hypr-pop close; {BIN}/hypr-nightlight toggle"},
 
     # the network icon and, while a VPN carries your traffic, a lock: one chip, one hover
     "group/net": {"orientation": "inherit", "modules": ["network", "custom/vpn"]},

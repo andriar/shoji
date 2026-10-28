@@ -29,6 +29,7 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 from pathlib import Path
 
 ALREADY = 3   # exit code: another hypr-widgets runs (the keeper does not start this one again)
@@ -100,24 +101,29 @@ def watch_fifo(osd, pops, zazen, shot, rest_card, bell):
         *lines, buf = buf.split(b"\n")
         osd_line = None
         for raw in lines:
-            parts = raw.decode(errors="replace").split("\t")
-            if len(parts) == 2 and parts[0] == "pop":
-                pops.toggle(parts[1])
-            elif len(parts) == 3 and parts[0] == "pop" and parts[1] in ("launcher", "keys"):
-                pops.open_with(parts[1], parts[2])  # hypr-pop launcher|keys <text>: open with a query
-            elif len(parts) == 2 and parts[0] == "motion":
-                MOTION["reduced"] = parts[1] == "on"
-                load_css()
-            elif len(parts) == 2 and parts[0] == "shot":
-                shot.show(parts[1])
-            elif len(parts) == 2 and parts[0] == "zazen":
-                zazen.start() if parts[1] == "start" else zazen.stop()
-            elif parts == ["timers"]:   # shoji-timer changed something
-                bell.check()
-            elif len(parts) == 2 and parts[0] == "rest":   # 休 the rest card (shoji-zazen)
-                rest_card.show() if parts[1] == "show" else rest_card.hide()
-            elif len(parts) == 4 and parts[2].isdigit():
-                osd_line = parts
+            try:
+                parts = raw.decode(errors="replace").split("\t")
+                if len(parts) == 2 and parts[0] == "pop":
+                    pops.toggle(parts[1])
+                elif len(parts) == 3 and parts[0] == "pop" and parts[1] in ("launcher", "keys"):
+                    pops.open_with(parts[1], parts[2])  # hypr-pop launcher|keys <text>: open with a query
+                elif len(parts) == 2 and parts[0] == "ping":   # hypr-pop asks "are you reading?" before it trusts the pid
+                    Path(parts[1]).touch()
+                elif len(parts) == 2 and parts[0] == "motion":
+                    MOTION["reduced"] = parts[1] == "on"
+                    load_css()
+                elif len(parts) == 2 and parts[0] == "shot":
+                    shot.show(parts[1])
+                elif len(parts) == 2 and parts[0] == "zazen":
+                    zazen.start() if parts[1] == "start" else zazen.stop()
+                elif parts == ["timers"]:   # shoji-timer changed something
+                    bell.check()
+                elif len(parts) == 2 and parts[0] == "rest":   # 休 the rest card (shoji-zazen)
+                    rest_card.show() if parts[1] == "show" else rest_card.hide()
+                elif len(parts) == 4 and parts[2].isdigit():
+                    osd_line = parts
+            except Exception:   # one bad command must not drop the fifo watch and every later one
+                traceback.print_exc()
         if osd_line:  # only the newest level matters when the knob spins fast
             (osd.set_level if isinstance(osd, Island) else osd.show)(osd_line[1], int(osd_line[2]), osd_line[3] == "1")
         return True
@@ -134,8 +140,8 @@ class NotifyFocus:
     when the screen is being shared."""
     WINDOW_S = 3
 
-    def __init__(self, meetings=None, island=None):
-        self.armed, self.meetings, self.island = 0.0, meetings, island
+    def __init__(self, meetings=None, island=None, pops=None):
+        self.armed, self.meetings, self.island, self.pops = 0.0, meetings, island, pops
         Gio.bus_get_sync(Gio.BusType.SESSION).signal_subscribe(
             None, "org.freedesktop.Notifications", "ActionInvoked", "/org/freedesktop/Notifications",
             None, Gio.DBusSignalFlags.NONE, self.on_action)
@@ -171,6 +177,8 @@ class NotifyFocus:
             spawn("hyprctl", "eval", "hl.config({ animations = { enabled = false } })")
         if event in ("focusedmon", "focusedmonv2"):
             GLib.idle_add(fit_panel)
+        if self.pops and event in ("workspace", "workspacev2"):   # a popover belongs to the workspace you opened it on
+            GLib.idle_add(self.pops.close)
         if self.island and event in ("fullscreen", "workspace", "workspacev2", "focusedmon", "activewindowv2"):
             GLib.idle_add(self.check_fullscreen)
         if event == "screencast" and self.meetings:  # "1,0" sharing a monitor, "1,1" a window, "0,…" stopped
@@ -190,7 +198,7 @@ def fit_panel():
         cfg = json.loads(cfg_path.read_text())
     except (OSError, ValueError):
         return False
-    want = max(0, Calendar.focused_width() // 2 - CC_WIDTH)
+    want = 10 if prefs().get("island") else max(0, Calendar.focused_width() // 2 - CC_WIDTH)   # under the bell, or the centre line
     if cfg.get("control-center-margin-right") != want:
         cfg["control-center-margin-right"] = want
         cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
@@ -237,7 +245,7 @@ def main():
     watch_swaync(Calendar())
     today = TodayCache()
     meetings = Meetings(today)
-    focus = NotifyFocus(meetings, island)  # noqa: F841  (kept alive for its signal and socket)
+    focus = NotifyFocus(meetings, island, pops)  # noqa: F841  (kept alive for its signal and socket)
     eyes = EyeRest(meetings, island)  # noqa: F841
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, 15, Gtk.main_quit)  # SIGTERM
     try:

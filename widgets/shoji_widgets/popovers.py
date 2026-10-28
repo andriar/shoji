@@ -6,13 +6,16 @@ from shoji_widgets.koyomi import *  # noqa: F401,F403
 
 # ---------------------------------------------------------------- popovers
 class Backdrop:
-    """Invisible full-screen layer under a popover: a click anywhere else closes it."""
+    """Invisible full-screen layer under a popover: a click anywhere else closes it (but not on
+    the bar, so a click there reaches the bar's own button instead of being swallowed)."""
+    BAR_CLEAR = 38   # bar margin 6 + height 30, plus a hair
 
     def __init__(self, on_click):
         self.win = layer_window("hypr-backdrop", Layer.Layer.TOP)
         for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):
             Layer.set_anchor(self.win, e, True)
         Layer.set_exclusive_zone(self.win, -1)
+        Layer.set_margin(self.win, Layer.Edge.TOP, self.BAR_CLEAR)   # the bar stays clickable: one click switches popovers
         ev = Gtk.EventBox()
         ev.set_visible_window(False)
         ev.connect("button-press-event", lambda *_: on_click())
@@ -2145,6 +2148,9 @@ class Popovers:
                 print(f"popover plugin {f.name}: {e!r}", file=sys.stderr)
 
     def toggle(self, name, back=None):
+        if name == "close":   # `hypr-pop close`: the bell closes a popover before swaync opens
+            self.close()
+            return
         if name not in self.items:
             return
         if self.open == name and hasattr(self.items[name], "again"):  # Alt+Tab again: next card
@@ -2154,6 +2160,7 @@ class Popovers:
             self.close()
             return
         self.close()
+        spawn("swaync-client", "-cp", "-sw")   # one panel at a time: close the notification centre
         self.backdrop.win.show()
         self.items[name].show()
         self.open = name

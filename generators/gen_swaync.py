@@ -8,6 +8,7 @@ D = Path.home() / ".config/swaync"
 
 PANEL_H = 479    # hypr-widgets Koyomi card (fixed); the panel matches it
 GAP = 8
+BAR_MARGIN = 10   # waybar margin-right
 WIDTH = 420
 
 
@@ -16,6 +17,16 @@ def reduced_motion():
         return bool(json.loads((Path.home() / ".config/shoji/prefs.json").read_text()).get("reduced_motion"))
     except (OSError, ValueError):
         return False
+
+
+def right_margin():
+    """With the island on, the clock lives in the island and the bell sits at the right of the bar:
+    the panel hangs under the bell (the bar's right margin). Otherwise it starts at the centre line."""
+    try:
+        island = bool(json.loads((Path.home() / ".config/shoji/prefs.json").read_text()).get("island"))
+    except (OSError, ValueError):
+        island = False
+    return BAR_MARGIN if island else max(0, screen_width() // 2 - WIDTH)
 
 
 def screen_width():
@@ -36,7 +47,7 @@ cfg = {
   "layer": "overlay", "control-center-layer": "top", "layer-shell": True,
   "cssPriority": "user",
   "control-center-margin-top": GAP, "control-center-margin-bottom": 8,
-  "control-center-margin-right": max(0, screen_width() // 2 - WIDTH), "control-center-margin-left": 0,
+  "control-center-margin-right": right_margin(), "control-center-margin-left": 0,
   "notification-2fa-action": True, "notification-inline-replies": False,
   "notification-icon-size": 28,
   "notification-body-image-height": 80, "notification-body-image-width": 160,
