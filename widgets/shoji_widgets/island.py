@@ -91,6 +91,16 @@ def radius(h):
     return min(h / 2, 18 + max(0.0, h - 36) * 0.21)
 
 
+LIVE_OVER_S = 86400   # a "track" longer than a day is a live stream (YouTube Live reports int64 max)
+
+
+def track_seconds(micros):
+    """Track length in seconds from mpris:length (microseconds); 0 when there is none to show,
+    which is also what a live stream gets, so it has no bar and no countdown."""
+    seconds = int(micros or 0) / 1e6
+    return seconds if 0 < seconds <= LIVE_OVER_S else 0.0
+
+
 def parse_item(out):
     """A source's output as {"short", "text", "tooltip", "click", "through"}, or None for nothing."""
     try:
@@ -444,7 +454,7 @@ class Island:
             out = subprocess.run([str(HOME / ".local/bin/shoji-media"), "info"], capture_output=True, text=True,
                                  timeout=4).stdout
             d = json.loads(out)
-            got = (float(d.get("position") or 0), int(d.get("mpris:length") or 0) / 1e6, time.monotonic())
+            got = (float(d.get("position") or 0), track_seconds(d.get("mpris:length")), time.monotonic())
         except (OSError, ValueError, subprocess.TimeoutExpired):
             got = (0.0, 0.0, time.monotonic())   # no length: no bar, and the next try waits 2 s too
         GLib.idle_add(self.set_position, got)

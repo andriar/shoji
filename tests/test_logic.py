@@ -917,6 +917,14 @@ class Island(unittest.TestCase):
         self.assertEqual(choose(None, None, [media], [b], False, True), (None, []))
         self.assertEqual(choose(("vol", 5, False), None, [], [b], False, True), ("level", []))
 
+    def test_a_live_stream_has_no_length(self):
+        from shoji_widgets.island import track_seconds
+        self.assertEqual(track_seconds(215_000_000), 215.0)
+        self.assertEqual(track_seconds(9223372036854775807), 0.0)   # YouTube Live: int64 max
+        self.assertEqual(track_seconds(0), 0.0)
+        self.assertEqual(track_seconds(None), 0.0)
+        self.assertEqual(track_seconds(-1), 0.0)
+
     def test_springs_land_and_corners_stay_round(self):
         from shoji_widgets.island import Spring, radius
         s = Spring(0.0, 0.4, 0.75)
