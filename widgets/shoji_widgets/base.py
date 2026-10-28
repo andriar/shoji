@@ -72,7 +72,7 @@ STRINGS = {  # English text -> (Indonesian, Japanese)
     "Nothing scheduled": ("Tidak ada jadwal", "予定なし"), "+{n} more": ("+{n} lagi", "他 {n} 件"),
     "Network": ("Jaringan", "ネットワーク"), "Bluetooth · right-click: devices": ("Bluetooth · klik kanan: perangkat", "Bluetooth · 右クリック：デバイス"),
     "Night light": ("Lampu malam", "夜間モード"), "Silent (do not disturb)": ("Senyap (jangan ganggu)", "通知オフ"),
-    "Keep awake": ("Tetap menyala", "スリープしない"), "Theme": ("Tema", "テーマ"), "Power menu": ("Menu daya", "電源メニュー"),
+    "Keep awake": ("Tetap menyala", "スリープしない"), "Theme": ("Tema", "テーマ"), "Headset mic (call quality)": ("Mikrofon headset (kualitas panggilan)", "ヘッドセットマイク(通話品質)"), "Power menu": ("Menu daya", "電源メニュー"),
     "Copied": ("Tersalin", "コピー済み"), "Open": ("Buka", "開く"), "Show in folder": ("Tampilkan di folder", "フォルダで表示"),
     "Delete": ("Hapus", "削除"), "in {m} min": ("{m} menit lagi", "あと {m} 分"), "Join": ("Gabung", "参加"),
     "Dismiss": ("Tutup", "閉じる"), "Mute": ("Bisukan", "ミュート"), "Unmute": ("Bunyikan", "ミュート解除"),
@@ -180,6 +180,10 @@ STRINGS = {  # English text -> (Indonesian, Japanese)
     "could not connect": ("gagal terhubung", "接続できません"), "could not disconnect": ("gagal memutus", "切断できません"),
     "CONNECTED": ("TERHUBUNG", "接続中"), "{n} on": ("{n} aktif", "{n} 件オン"),
     "Focus": ("Fokus", "集中"), "Clipboard": ("Clipboard", "クリップボード"), "Machine": ("Mesin", "マシン"),
+    "Rest": ("Istirahat", "休憩"), "Look far away": ("Lihat yang jauh", "遠くを見る"), "until {t}": ("sampai {t}", "{t} まで"),
+    "muted": ("senyap", "ミュート"), "Timer": ("Timer", "タイマー"), "Stopwatch": ("Stopwatch", "ストップウォッチ"),
+    "paused": ("dijeda", "一時停止中"), "since {t}": ("sejak {t}", "{t} から"), "{label} · done": ("{label} · selesai", "{label} · 終了"),
+    "start a stopwatch": ("mulai stopwatch", "ストップウォッチを開始"), "start a {d} timer": ("mulai timer {d}", "{d} のタイマーを開始"),
 }
 LANGS = {"en": "English", "id": "Indonesia", "ja": "日本語"}
 ID_MONTHS = "Januari Februari Maret April Mei Juni Juli Agustus September Oktober November Desember".split()
@@ -249,6 +253,13 @@ def sh(*cmd):
 
 def spawn(*cmd):
     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def rin():
+    """The bell (prefs "rin": false keeps it quiet)."""
+    bell = HOME / ".local/share/shoji/rin.wav"
+    if prefs().get("rin", True) and bell.exists():
+        spawn("pw-play", "--volume", "0.4", str(bell))
 
 
 def theme():
@@ -347,6 +358,10 @@ button.day:not(.today):hover { background: @hover; }
 .chip:hover { background: @hover; }
 .chip.on { background: @accent; color: @on_accent; }
 .chip.armed { background: alpha(@warn, 0.28); color: @text; }   /* "click again" for an action on many */
+/* what still reaches you in zazen: as quiet as the enso above it */
+.zazen-through { background: alpha(@base, 0.82); border: 1px solid alpha(@text, 0.14); box-shadow: none;
+                 border-radius: 12px; padding: 3px 12px; min-height: 22px; color: @text; font-size: 11px; }
+.zazen-through:hover { background: @hover; }
 .link { background: transparent; border: none; box-shadow: none; color: @muted; padding: 2px 10px;
         border-radius: 8px; min-height: 26px; }
 .link:hover { background: @hover; color: @text; }

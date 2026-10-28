@@ -87,16 +87,29 @@ def span(seconds):
 
 # ---------------------------------------------------------------- docker
 def container_level(c):
+    if c["state"] == "running" and c.get("offline"):
+        return "bad"
     if c["state"] == "running":
         return {"unhealthy": "bad", "starting": "warn"}.get(c["health"], "ok")
     return "warn" if c["state"] == "paused" else "bad"
 
 
 def container_why(c, now):
+    if c["state"] == "running" and c.get("offline"):
+        return "running without a network (recreate it)"
     if c["state"] == "running":
         return " · ".join(x for x in (c["health"], f"up {span(now - c['since'])}" if c["since"] else "") if x)
     ago = f" {span(now - c['since'])} ago" if c["since"] else ""
     return f"{c['state']} ({c['exit']}){ago}" if c["state"] == "exited" else c["state"] + ago
+
+
+def offline(c):
+    """Running on a bridge network it is no longer attached to: only loopback inside, published
+    ports dead, yet a healthcheck on 127.0.0.1 still says healthy (seen after a boot)."""
+    mode = (c.get("HostConfig") or {}).get("NetworkMode", "")
+    attached = (c.get("NetworkSettings") or {}).get("Networks") or {}
+    return c["State"]["Status"] == "running" and mode not in ("host", "none", "") \
+        and not mode.startswith("container:") and not attached
 
 
 def containers(ignore, now):
@@ -115,7 +128,8 @@ def containers(ignore, now):
         item = {"name": name, "stack": (c["Config"].get("Labels") or {}).get("com.docker.compose.project", ""),
                 "state": st["Status"], "health": (st.get("Health") or {}).get("Status", ""),
                 "exit": st.get("ExitCode", 0), "restarts": c.get("RestartCount", 0),
-                "since": epoch(st["StartedAt"] if st["Status"] == "running" else st["FinishedAt"])}
+                "since": epoch(st["StartedAt"] if st["Status"] == "running" else st["FinishedAt"]),
+                "offline": offline(c)}
         item["level"], item["why"] = container_level(item), container_why(item, now)
         out.append(item)
     return sorted(out, key=lambda c: (c["stack"] or c["name"], c["name"]))

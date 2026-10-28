@@ -233,9 +233,7 @@ class ReminderCard:
             GLib.source_remove(self.timer)
         stay = max(60, (start - datetime.datetime.now()).total_seconds() + 300)
         self.timer = GLib.timeout_add_seconds(int(stay), self.hide)
-        rin = HOME / ".local/share/shoji/rin.wav"
-        if prefs().get("rin", True) and rin.exists():
-            spawn("pw-play", "--volume", "0.4", str(rin))
+        rin()
 
     def hide(self):
         self.timer = 0
@@ -468,7 +466,10 @@ class Zazen:
     SIZE = 56
     STATE = RUN / "shoji-zazen.json"
 
-    def __init__(self):
+    KEY = "zazen"
+
+    def __init__(self, island=None):
+        self.island = island      # 島 shows the time instead of this ensō
         self.win = layer_window("hypr-zazen", Layer.Layer.OVERLAY)
         Layer.set_anchor(self.win, Layer.Edge.TOP, True)
         Layer.set_margin(self.win, Layer.Edge.TOP, GAP)
@@ -478,7 +479,7 @@ class Zazen:
         self.win.add(self.area)
         self.area.show()
         self.win.connect("realize", click_through)
-        self.state, self.ticking = None, False
+        self.state, self.ticking, self.through = None, False, None
         self.start()  # a session survives a hypr-widgets restart
 
     def start(self):
@@ -487,14 +488,27 @@ class Zazen:
         except (OSError, ValueError):
             self.state = None
             return
-        self.win.show()
+        self.show()
+        if self.state.get("phase") == "focus" and not self.island:
+            self.through = self.through or Through(GAP + self.SIZE + 6)
+            self.through.start()
         if not self.ticking:
             self.ticking = True
             GLib.timeout_add_seconds(1, self.tick)
 
+    def show(self):
+        if self.island:
+            self.island.set_timer(self.KEY, self.state)
+        else:
+            self.win.show()
+
     def stop(self):
         self.state = None
         self.win.hide()
+        if self.island:
+            self.island.set_timer(self.KEY, None)
+        if self.through:
+            self.through.stop()
 
     def left(self):
         return self.state["minutes"] * 60 - (time.time() - self.state["start"])
@@ -535,16 +549,125 @@ class Zazen:
         return False
 
 
+class Through:
+    """What may still reach you in a focus session (prefs "zazen_through": a command, as a string or
+    a list). It prints nothing, or JSON {"text", "tooltip", "click": [argv]}: the text sits under
+    the ensō, quietly (no toast, no sound), until it is gone; a click runs "click". Shoji ships no
+    command: the kind of thing meant is a coding agent stuck at a permission prompt for 25 minutes."""
+    EVERY_S = 5
+
+    def __init__(self, top):
+        self.win = layer_window("hypr-zazen", Layer.Layer.OVERLAY)
+        Layer.set_anchor(self.win, Layer.Edge.TOP, True)
+        Layer.set_margin(self.win, Layer.Edge.TOP, top)
+        self.button = Gtk.Button()
+        self.button.get_style_context().add_class("zazen-through")
+        self.button.connect("clicked", lambda *_: self.click and spawn(*self.click))
+        self.win.add(self.button)
+        self.click, self.polling, self.busy = None, False, False
+
+    @staticmethod
+    def command():
+        cmd = prefs().get("zazen_through")
+        if isinstance(cmd, str):
+            cmd = cmd.split()
+        if not isinstance(cmd, list) or not cmd:
+            return None
+        return [os.path.expanduser(cmd[0])] + cmd[1:]
+
+    @staticmethod
+    def parse(out):
+        """The command's output as {"text", "tooltip", "click"}, or None when there is nothing."""
+        try:
+            data = json.loads(out) if out.strip() else None
+        except ValueError:
+            return None
+        if not isinstance(data, dict) or not str(data.get("text") or "").strip():
+            return None
+        click = data.get("click")
+        return {"text": str(data["text"]), "tooltip": str(data.get("tooltip") or ""),
+                "click": click if isinstance(click, list) and click else None}
+
+    def start(self):
+        if self.command() and not self.polling:
+            self.polling = True
+            self.poll()
+            GLib.timeout_add_seconds(self.EVERY_S, self.poll)
+
+    def stop(self):
+        self.polling = False
+        self.win.hide()
+
+    def poll(self):
+        cmd = self.polling and self.command()
+        if not cmd:
+            self.stop()
+            return False
+        if not self.busy:
+            self.busy = True
+            threading.Thread(target=self.read, args=(cmd,), daemon=True).start()
+        return True
+
+    def read(self, cmd):
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=4).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            out = ""
+        GLib.idle_add(self.show, self.parse(out))
+
+    def show(self, data):
+        self.busy = False
+        if not (self.polling and data):
+            self.win.hide()
+            return False
+        load_css()
+        self.button.set_label(data["text"])
+        self.button.set_tooltip_text(data["tooltip"] or None)
+        self.click = data["click"]
+        self.win.show_all()
+        return False
+
+
+class TimerBell:
+    """⏲ shoji-timer's timers end here: the rin, then the island says so for a few seconds, or a
+    notification without the island. Looks once a second (and at once when shoji-timer pokes the
+    FIFO); the island gets the list to show."""
+    def __init__(self, island=None):
+        self.island, self.last = island, None
+        self.check()
+        GLib.timeout_add_seconds(1, self.check)
+
+    def check(self):
+        from shoji_widgets import timers
+        now = time.time()
+        found = timers.load(now)
+        for t in [t for t in found if t["kind"] == "timer" and not t.get("paused") and timers.left(t, now) <= 0]:
+            timers.remove(t["id"])
+            found.remove(t)
+            rin()
+            text = T("{label} · done").format(label=t["label"] or T("Timer"))
+            if self.island:
+                self.island.announce(text)
+            else:
+                spawn("notify-send", "-a", "Shoji", "-u", "critical", "⏲ " + text)
+        shape = [(t["id"], t.get("paused"), t.get("start")) for t in found]
+        if self.island and shape != self.last:
+            self.island.set_user_timers(found)
+        self.last = shape
+        return True
+
+
 class EyeRest(Zazen):
     """遠 20-20-20 (prefs "eye_rest"): after 20 minutes at the screen, the zazen ensō asks you to look
     at something far away for 20 seconds, closing as they pass. Time away (the ink screen, the lock)
     starts the 20 minutes again; a zazen session, a meeting or a shared screen puts it off."""
     STATE = RUN / "shoji-eyes.json"   # never written: nothing to pick up after a restart
+    KEY = "eyes"
     EVERY_S = int(os.environ.get("SHOJI_EYE_EVERY_S", 20 * 60))   # the live test shortens it
     LOOK_S = 20
 
-    def __init__(self, meetings):
-        super().__init__()
+    def __init__(self, meetings, island=None):
+        super().__init__(island)
         self.meetings, self.since = meetings, time.time()
         GLib.timeout_add_seconds(30, self.watch)
 
@@ -563,7 +686,7 @@ class EyeRest(Zazen):
         if self.due(now):
             self.since = now
             self.state = {"minutes": self.LOOK_S / 60, "start": now, "phase": "look", "mark": "遠"}
-            self.win.show()
+            self.show()
             if not self.ticking:
                 self.ticking = True
                 GLib.timeout_add_seconds(1, self.tick)

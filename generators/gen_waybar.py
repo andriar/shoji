@@ -4,6 +4,7 @@
 One paper strip, three zones:
   left    search · workspaces 一二三四 (seal = current; shoji-ws, clickable) · window title
   center  time + weekday kanji · unread dot          (click: Koyomi panel = swaync + calendar)
+          or nothing: with prefs "island" the 島 pill of hypr-widgets sits there, the dot goes right
   right   load · on-only indicators · homelab · network · mic · ensō volume · battery · tray
 Icons are Lucide (font family "lucide"); private-use glyphs are written with chr(), never typed.
 """
@@ -26,7 +27,7 @@ cfg = {
     "modules-left": ["custom/launcher", "custom/ws-watch", *WS, "hyprland/window"],
     "modules-center": ["custom/clock", "custom/notification"],
     "modules-right": ["custom/media", "custom/record", "custom/system", "custom/keepawake", "custom/nightlight", "custom/btbat",
-                      "group/homelab", "group/net", "pulseaudio#mic", "image#vol", "pulseaudio", "image#bat", "battery", "custom/drawer", "group/tray"],
+                      "group/homelab", "group/net", "group/audioin", "image#vol", "pulseaudio", "image#bat", "battery", "custom/drawer", "group/tray"],
 
     "custom/launcher": {"format": L("search"), "tooltip-format": "Search apps (Super+Space)",
                         "on-click": f"{BIN}/hypr-pop launcher"},
@@ -61,6 +62,12 @@ cfg = {
     # a Bluetooth device running low (shoji-btbat prints nothing above 20 %); click = its popover
     "custom/btbat": {"exec": f"{BIN}/shoji-btbat", "return-type": "json", "interval": 120,
                      "on-click": f"{BIN}/hypr-pop bluetooth"},
+    # one chip for the input: the mic, and beside it the headset-mic switch (only with a headset)
+    "group/audioin": {"orientation": "inherit", "modules": ["pulseaudio#mic", "custom/headsetmic"]},
+    # Bluetooth headset mic: the headset must leave music mode (A2DP) for call mode (HFP) to be heard;
+    # hidden with no headset, muted while in music mode, accent while the headset mic is the input
+    "custom/headsetmic": {"exec": f"{BIN}/shoji-headset-mic status", "return-type": "json",
+                          "interval": 10, "signal": 18, "on-click": f"{BIN}/shoji-headset-mic toggle"},
     # homelab: a quiet server glyph (a reading: 11 px), the number down beside it in the alert
     # colour; two modules so each label holds one font and sits on the bar's centre (like the
     # volume ensō + number). Hidden until ~/.config/shoji/homelab.json exists.
@@ -127,6 +134,15 @@ cfg = {
     "custom/traydots": {"format": L("ellipsis"), "tooltip-format": "App icons — hover to show"},
     "tray": {"spacing": 8, "icon-size": 16},
 }
+# 島 the island (prefs "island": true, drawn by hypr-widgets) takes the centre: the clock and now
+# playing live in it, the bell moves to the right
+try:
+    ISLAND = bool(json.loads((Path.home() / ".config/shoji/prefs.json").read_text()).get("island"))
+except (OSError, ValueError):
+    ISLAND = False
+if ISLAND:
+    cfg["modules-center"] = []
+    cfg["modules-right"] = ["custom/notification"] + [m for m in cfg["modules-right"] if m != "custom/media"]
 # a desktop has no battery: leave its two modules out (an empty image module still takes a hover)
 if not list(Path("/sys/class/power_supply").glob("BAT*")):
     cfg["modules-right"] = [m for m in cfg["modules-right"] if m not in ("image#bat", "battery")]
@@ -173,7 +189,7 @@ tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
 
 /* every clickable thing */
 #custom-launcher, #custom-ws, #window, #custom-clock, #custom-notification, #custom-record,
-#custom-system, #custom-keepawake, #custom-nightlight, #custom-btbat, #homelab, #net, #pulseaudio, #image, #battery,
+#custom-system, #custom-keepawake, #custom-nightlight, #custom-btbat, #audioin, #homelab, #net, #pulseaudio, #image, #battery,
 #tray {
   padding: 0 7px;
   margin: 3px 1px;
@@ -183,7 +199,7 @@ tooltip label { color: @text; padding: 4px 8px; font-size: 12px; }
   transition: background 150ms ease-out, color 150ms ease-out;  /* none under reduced motion (below) */
 }
 #custom-launcher:hover, #custom-ws:hover, #custom-clock:hover, #custom-notification:hover,
-#custom-system:hover, #custom-btbat:hover, #homelab:hover, #net:hover, #pulseaudio:hover, #image:hover {
+#custom-system:hover, #custom-btbat:hover, #audioin:hover, #homelab:hover, #net:hover, #pulseaudio:hover, #image:hover {
   background: @hover;
 }
 
@@ -216,6 +232,10 @@ window#waybar.empty #window { background: transparent; }
 
 #custom-btbat { font-family: "lucide", "JetBrainsMono Nerd Font"; font-size: 11px; color: @warn; }
 #custom-btbat.critical { color: @alert; }
+/* inside the audioin chip the group carries margin, padding and hover; the two icons only space themselves */
+#audioin #pulseaudio, #audioin #custom-headsetmic { margin: 0; padding: 0 4px; background: transparent; }
+#custom-headsetmic { font-family: "lucide"; font-size: 13px; color: @muted; }   /* same size as the mic beside it (#pulseaudio.mic) */
+#custom-headsetmic.on { color: @accent; }
 /* homelab: glyph + count are two modules (one font each, so both sit on the centre) in one
    group, which carries the chip's padding and its one hover */
 #custom-homelab { font-family: "lucide"; font-size: 11px; color: @muted; }
@@ -310,6 +330,11 @@ if REDUCED:
     css += "* { transition: none; }\n"
 # the mic module shares #pulseaudio; give it the icon size back
 css += "#pulseaudio.mic { font-family: \"lucide\"; font-size: 13px; padding: 0 7px; }\n"
+if ISLAND:  # the strip splits in two around 島: each half its own paper, the island a third piece
+    css += """
+window#waybar > box { background: transparent; border: none; padding: 0; }
+.modules-left, .modules-right { background: @elev1; border: 1px solid @edge; border-radius: 12px; padding: 0 4px; }
+"""
 css += local.get("css", "")
 (W / "style.css").write_text(css)
 print("ok")

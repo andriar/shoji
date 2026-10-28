@@ -142,7 +142,15 @@ class Sound(Popover):
             for dev in AUDIO.devices(k):
                 self.row(self.device_icon(dev, kind), AUDIO.label(dev, kind)[3:], dev["name"] == current,
                          lambda d=dev, kd=kind: self.pick(d, kd))
+            if kind == "in":
+                hs = sh(str(HOME / ".local/bin/shoji-headset-mic"), "state")
+                if hs != "none":
+                    self.row(icon("headset"), T("Headset mic (call quality)"), hs == "on", self.headset_mic)
         self.footer(T("Sound settings…"), ["pavucontrol"])
+
+    def headset_mic(self):
+        sh(str(HOME / ".local/bin/shoji-headset-mic"), "toggle")
+        self.refresh()
 
     def pick(self, dev, kind):
         k = AUDIO.KINDS[kind]
@@ -836,8 +844,13 @@ class Launcher(Popover):
         self.listbox.invalidate_sort()
         visible = [r for r in self.rows if r.score > 0]
         self.section.set_text(T("FREQUENT · ALL APPS") if not q else f"{T('RESULTS')} · {len(visible)}")
-        self.empty.set_text(f"{T('No app matches')} “{q}”." if q and not visible else "")
-        self.empty.set_visible(bool(q and not visible))
+        cmd = self.timer_command(self.entry.get_text())
+        if cmd:   # "timer 10m tea" / "stopwatch": Enter starts it instead of an app
+            self.empty.set_text("↵ " + (T("start a stopwatch") if cmd[0] == "stopwatch" else
+                                       T("start a {d} timer").format(d=cmd[0])) + (f" · {' '.join(cmd[1:])}" if cmd[1:] else ""))
+        else:
+            self.empty.set_text(f"{T('No app matches')} “{q}”." if q and not visible else "")
+        self.empty.set_visible(bool(cmd or (q and not visible)))
         if visible:
             first = min(visible, key=lambda r: (-r.score, r.app.get_display_name().lower()))
             self.listbox.select_row(first)
@@ -865,7 +878,23 @@ class Launcher(Popover):
             return True
         return super().on_key(w, ev)
 
+    @staticmethod
+    def timer_command(text):
+        """shoji-timer's arguments for "timer 10m tea" / "stopwatch [label]" typed here, or None."""
+        from shoji_widgets.timers import parse_duration
+        words = text.split()
+        if len(words) > 1 and words[0].lower() in ("timer", "t") and parse_duration(words[1]):
+            return words[1:]
+        if words[:1] and words[0].lower() == "stopwatch":
+            return ["stopwatch"] + words[1:]
+        return None
+
     def launch_selected(self, new_window=False):
+        cmd = self.name == "launcher" and self.timer_command(self.entry.get_text())
+        if cmd:
+            self.manager.close()
+            spawn(str(HOME / ".local/bin/shoji-timer"), *cmd)
+            return
         row = self.listbox.get_selected_row()
         if row and row.score > 0:
             self.launch(row.app, new_window)

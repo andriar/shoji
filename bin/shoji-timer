@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""⏲ Timers and stopwatches for Shoji. hypr-widgets rings a timer when it ends (the rin, then the
+island says so for a moment, or a notification without the island); the island shows them as
+activities. Also from the launcher: type "timer 10m tea" or "stopwatch".
+
+  shoji-timer 10m [LABEL]          start a timer: 10m · 90s · 1h30m · 1:30 · 25 (minutes)
+  shoji-timer stopwatch [LABEL]    start a stopwatch
+  shoji-timer list                 what runs: id, kind, time, label
+  shoji-timer toggle|pause|resume [ID]   (no ID: the one the island shows first)
+  shoji-timer cancel [ID|all]
+"""
+import os
+import sys
+import time
+from pathlib import Path
+
+for _lib in (Path(__file__).resolve().parent.parent / "widgets", Path.home() / ".local/share/shoji/widgets"):
+    if (_lib / "shoji_widgets").is_dir():
+        sys.path.insert(0, str(_lib))
+        break
+
+from shoji_widgets import timers  # noqa: E402
+
+FIFO = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "hypr-osd.fifo"
+
+
+def poke():
+    """Tell hypr-widgets now, not at its next second."""
+    try:
+        fd = os.open(FIFO, os.O_WRONLY | os.O_NONBLOCK)
+        os.write(fd, b"timers\n")
+        os.close(fd)
+    except OSError:
+        pass
+
+
+def pick(ident):
+    now = time.time()
+    found = timers.load(now)
+    if ident:
+        found = [t for t in found if t["id"] == ident]
+    if not found:
+        sys.exit("no timer" + (f" {ident}" if ident else ""))
+    return found[0]
+
+
+def main(args):
+    now = time.time()
+    cmd = args[0] if args else "list"
+    rest = args[1:]
+    if cmd == "list":
+        for t in timers.load(now):
+            shown = timers.fmt(timers.left(t, now) + 0.999) if t["kind"] == "timer" else timers.fmt(timers.ran(t, now))
+            print(f"{t['id']}  {t['kind']:<9} {shown:>8}{'  paused' if t.get('paused') else ''}  {t['label']}")
+    elif cmd == "stopwatch":
+        timers.new("stopwatch", label=" ".join(rest), now=now)
+    elif cmd in ("toggle", "pause", "resume"):
+        t = pick(rest[0] if rest else None)
+        if cmd == "pause" or (cmd == "toggle" and not t.get("paused")):
+            timers.pause(t, now)
+        else:
+            timers.resume(t, now)
+    elif cmd == "cancel":
+        for t in timers.load(now) if rest[:1] == ["all"] else [pick(rest[0] if rest else None)]:
+            timers.remove(t["id"])
+    elif timers.parse_duration(cmd):
+        timers.new("timer", timers.parse_duration(cmd), " ".join(rest), now=now)
+    else:
+        sys.exit(__doc__)
+    poke()
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

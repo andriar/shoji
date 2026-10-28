@@ -20,6 +20,8 @@ Usage: shoji [apply [NAME]|list|status|toggle|doctor|gnome|vscode|spotify|chrome
   season        the season for the seasonal accent: spring 紅梅 / summer 青竹 / autumn 紅葉 / winter 白群
   date-kanji    十月二十四日 · 土曜日   (lock screen)
   weekday-kanji 土                    (bar)
+  island [on|off] 島 the island: one pill at the top centre for the clock, the level, zazen and
+                what plays, in place of the bar's clock and the ensō OSD (no word: is it on?)
 
 Every app config imports a generated file; nothing else hard-codes a hex value.
 Also renders, per palette: the ink-mountain wallpaper (the sun on light palettes, the moon in
@@ -1627,6 +1629,34 @@ then Custom theme → Theme Colors → Import, paste, Apply.
 Slack keeps it until you import another: run this again after a palette change.""")
 
 
+def cmd_island(want):
+    """Switch 島 on or off: the pref, the bar without (or with) its clock, hypr-widgets anew."""
+    if want not in ("on", "off"):
+        print("on" if prefs_get("island") else "off")
+        return
+    try:
+        prefs = json.loads(PREFS.read_text())
+    except (OSError, ValueError):
+        prefs = {}
+    prefs["island"] = want == "on"
+    PREFS.write_text(json.dumps(prefs, indent=1, ensure_ascii=False) + "\n")
+    run("python3", str(CFG / "shoji/gen_waybar.py"))
+    run("pkill", "-SIGUSR2", "-x", "waybar")
+    pidfile = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "hypr-widgets.pid"
+    try:
+        pid = int(pidfile.read_text())
+        os.kill(pid, 15)
+        for _ in range(30):   # it removes its pid file on the way out
+            if not pidfile.exists():
+                break
+            time.sleep(0.1)
+    except (OSError, ValueError):
+        pass
+    subprocess.Popen([str(HOME / ".local/bin/hypr-widgets")], stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+    print(want)
+
+
 def main():
     args = sys.argv[1:] or ["status"]
     cmd = args[0]
@@ -1688,6 +1718,8 @@ def main():
     elif cmd == "season":
         sid, kanji, colour = season()
         print(f"{sid} {kanji} {colour}")
+    elif cmd == "island":
+        cmd_island(args[1] if len(args) > 1 else "")
     elif cmd == "weekday-kanji":
         print(WEEK_K[datetime.date.today().weekday()])
     elif cmd in ("apply", "toggle"):

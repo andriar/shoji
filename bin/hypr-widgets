@@ -4,6 +4,9 @@
   osd       ensō ring, top right: volume / mic level, shown even when Do Not Disturb is on.
             hypr-osd writes "icon<TAB>title<TAB>percent<TAB>muted" lines to $FIFO.
   zazen     ensō at the top centre during a shoji-zazen focus session ("zazen<TAB>start|stop").
+  island    島 (prefs "island": true): one pill at the top centre in place of the two above and the
+            bar's clock and now-playing; activities grow round the clock, levels borrow it.
+  timers    shoji-timer's timers ring here when they end ("timers" on the FIFO: look now).
   shot      preview card in the bottom right after a screenshot ("shot<TAB>path", from hypr-shot).
   calendar  Koyomi: kanji week, today as a seal; sits left of the swaync control center
             while it is open (follows swaync's SubscribeV2 cc_open signal). Click a day for its
@@ -21,8 +24,49 @@ socket, swaync's signal, main().
 Colors: ~/.config/waybar/colors.css for GTK CSS and ~/.config/shoji/current.json for cairo,
 both written by `shoji apply`, re-read on every show.
 """
+import os
+import signal
+import subprocess
 import sys
+import time
 from pathlib import Path
+
+ALREADY = 3   # exit code: another hypr-widgets runs (the keeper does not start this one again)
+
+
+def keep():
+    """Run the widgets as a child and start them again when they die of something (a crash, the
+    compositor dropping the connection), at most 5 times a minute. Their stderr goes to
+    ~/.local/state/shoji-widgets.log, so the reason stays. A clean exit or SIGTERM ends it."""
+    log = Path.home() / ".local/state/shoji-widgets.log"   # ~/.local/state/shoji is the palette file
+    log.parent.mkdir(parents=True, exist_ok=True)
+    if log.exists() and log.stat().st_size > 1_000_000:
+        log.write_text("")
+    child, starts = None, []
+    signal.signal(signal.SIGTERM, lambda *_: child and child.terminate())
+    while True:
+        starts = [t for t in starts if time.time() - t < 60] + [time.time()]
+        with open(log, "a") as err:
+            child = subprocess.Popen([sys.executable, __file__], stderr=err, env={**os.environ, "SHOJI_WIDGETS_CHILD": "1"})
+        while True:
+            try:
+                code = child.wait(timeout=60)
+                break
+            except subprocess.TimeoutExpired:   # apps started from the launcher write here too
+                if log.stat().st_size > 2_000_000:
+                    os.truncate(log, 0)
+        if code in (0, ALREADY, -signal.SIGTERM) or len(starts) >= 5:
+            return code
+        with open(log, "a") as err:
+            err.write(f"{time.strftime('%F %T')} hypr-widgets ended ({code}); starting it again\n")
+        time.sleep(1)
+
+
+if __name__ == "__main__" and not os.environ.get("SHOJI_WIDGETS_CHILD"):
+    sys.exit(keep())
+if os.environ.get("SHOJI_WIDGETS_CHILD"):
+    import faulthandler
+    faulthandler.enable()   # a crash in GTK or cairo leaves its Python stack in the log
 
 for _lib in (Path(__file__).resolve().parent.parent / "widgets", Path.home() / ".local/share/shoji/widgets"):
     if (_lib / "shoji_widgets").is_dir():
@@ -34,10 +78,11 @@ from shoji_widgets.koyomi import *  # noqa: E402,F401,F403
 from shoji_widgets.popovers import *  # noqa: E402,F401,F403
 from shoji_widgets.overlays import *  # noqa: E402,F401,F403
 from shoji_widgets.restcard import RestCard  # noqa: E402
+from shoji_widgets.island import Island  # noqa: E402
 
 
 # ---------------------------------------------------------------- wiring
-def watch_fifo(osd, pops, zazen, shot, rest_card):
+def watch_fifo(osd, pops, zazen, shot, rest_card, bell):
     if FIFO.exists() and not FIFO.is_fifo():
         FIFO.unlink()
     if not FIFO.exists():
@@ -67,12 +112,14 @@ def watch_fifo(osd, pops, zazen, shot, rest_card):
                 shot.show(parts[1])
             elif len(parts) == 2 and parts[0] == "zazen":
                 zazen.start() if parts[1] == "start" else zazen.stop()
+            elif parts == ["timers"]:   # shoji-timer changed something
+                bell.check()
             elif len(parts) == 2 and parts[0] == "rest":   # 休 the rest card (shoji-zazen)
                 rest_card.show() if parts[1] == "show" else rest_card.hide()
             elif len(parts) == 4 and parts[2].isdigit():
                 osd_line = parts
         if osd_line:  # only the newest level matters when the knob spins fast
-            osd.show(osd_line[1], int(osd_line[2]), osd_line[3] == "1")
+            (osd.set_level if isinstance(osd, Island) else osd.show)(osd_line[1], int(osd_line[2]), osd_line[3] == "1")
         return True
 
     GLib.unix_fd_add_full(GLib.PRIORITY_DEFAULT, fd, GLib.IOCondition.IN, on_data)
@@ -87,8 +134,8 @@ class NotifyFocus:
     when the screen is being shared."""
     WINDOW_S = 3
 
-    def __init__(self, meetings=None):
-        self.armed, self.meetings = 0.0, meetings
+    def __init__(self, meetings=None, island=None):
+        self.armed, self.meetings, self.island = 0.0, meetings, island
         Gio.bus_get_sync(Gio.BusType.SESSION).signal_subscribe(
             None, "org.freedesktop.Notifications", "ActionInvoked", "/org/freedesktop/Notifications",
             None, Gio.DBusSignalFlags.NONE, self.on_action)
@@ -100,6 +147,14 @@ class NotifyFocus:
             return
         self.events = Gio.DataInputStream.new(self.conn.get_input_stream())
         self.events.read_line_async(GLib.PRIORITY_DEFAULT, None, self.on_event)
+
+    def check_fullscreen(self):
+        """島 steps aside for a fullscreen window (a film, a game), except to show a level."""
+        try:
+            self.island.set_fullscreen(bool(json.loads(sh("hyprctl", "activeworkspace", "-j")).get("hasfullscreen")))
+        except ValueError:
+            pass
+        return False
 
     def on_action(self, *_):
         self.armed = time.monotonic() + self.WINDOW_S
@@ -116,6 +171,8 @@ class NotifyFocus:
             spawn("hyprctl", "eval", "hl.config({ animations = { enabled = false } })")
         if event in ("focusedmon", "focusedmonv2"):
             GLib.idle_add(fit_panel)
+        if self.island and event in ("fullscreen", "workspace", "workspacev2", "focusedmon", "activewindowv2"):
+            GLib.idle_add(self.check_fullscreen)
         if event == "screencast" and self.meetings:  # "1,0" sharing a monitor, "1,1" a window, "0,…" stopped
             self.meetings.set("screen", addr.startswith("1"))
         if event == "urgent" and time.monotonic() < self.armed:
@@ -165,7 +222,8 @@ def main():
     try:
         old = int(PIDFILE.read_text())
         os.kill(old, 0)
-        sys.exit(f"hypr-widgets already running (pid {old})")
+        print(f"hypr-widgets already running (pid {old})", file=sys.stderr)
+        sys.exit(ALREADY)
     except (OSError, ValueError):
         pass
     PIDFILE.write_text(str(os.getpid()))
@@ -174,12 +232,13 @@ def main():
                                              Gtk.STYLE_PROVIDER_PRIORITY_USER)
     load_css()
     pops = Popovers()
-    watch_fifo(Osd(), pops, Zazen(), ShotCard(), RestCard())
+    island = Island() if prefs().get("island") else None   # 島 takes the OSD, the zazen ensō and the clock
+    watch_fifo(island or Osd(), pops, Zazen(island), ShotCard(), RestCard(), TimerBell(island))
     watch_swaync(Calendar())
     today = TodayCache()
     meetings = Meetings(today)
-    focus = NotifyFocus(meetings)  # noqa: F841  (kept alive for its signal and socket)
-    eyes = EyeRest(meetings)  # noqa: F841
+    focus = NotifyFocus(meetings, island)  # noqa: F841  (kept alive for its signal and socket)
+    eyes = EyeRest(meetings, island)  # noqa: F841
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, 15, Gtk.main_quit)  # SIGTERM
     try:
         Gtk.main()

@@ -64,6 +64,31 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
   sends a notification. What to watch lives in `~/.config/shoji/homelab.json` (format in
   `shoji-homelab --help`).
 
+**島 Shima, the island** (opt-in: `shoji island on`; `off` puts the clock back)
+- One pill at the top centre holds the clock, always, the way the camera stays in the Dynamic
+  Island. One activity joins it on both sides of the clock: the zazen or 遠 ensō with its minutes,
+  a timer (`⏲ │ 16:09 火 │ 9:58`), the music (the cover │ the clock │ bars tinted with its colour).
+  A second sits apart as a droplet beside it, then what a source has to say (below); three at
+  most. A droplet is born out of the pill's edge on a stretching neck and melts back in when it
+  ends. A new track says its name for 1.5 s.
+- Hover or click the pill and it opens under the clock with the activity's details (the timer's
+  minutes and seconds and when it ends, the cover with title and artist), or the date.
+- A click on a droplet opens it where it is: it grows into a card with the same details while the
+  clock stays and the other droplets move along. A click on what is open acts; moving away
+  closes it. The ring takes the activity's colour.
+- The pill swells at once under the pointer; a volume, mic or brightness change borrows it for a
+  moment (in place of the ensō OSD).
+- A click does what the pill shows: Koyomi from the clock, the Media popover from the music
+  (right-click: play / pause, scroll: previous / next), pause / resume a timer (right-click:
+  cancel), the Sound popover from a level. It steps aside for a fullscreen window, except to show a
+  level. Frames run only while it moves; the music's bars redraw only while they show.
+
+**⏲ Timers** — type `timer 10m tea` or `stopwatch` in the launcher, or run `shoji-timer 10m tea`.
+When a timer ends the rin sounds and the island says so (a notification without the island).
+`shoji-timer list`, `toggle`, `cancel [ID|all]`. GNOME Clocks' timers show too (read off its window by
+`shoji-clocks`, since Clocks shares them with nothing else; its window has to stay open): a click
+pauses / resumes, a right-click brings Clocks up.
+
 **Koyomi (暦), under the clock**
 - One container: the calendar, today's micro-season (七十二候, e.g. 霜始降 "first frost") and the
   weather in one kanji (晴 曇 雨 雪 霧 雷, 月 on a clear night, from Open-Meteo), the day's
@@ -281,7 +306,7 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 | `Super+,` | Preferences: zazen and rest lengths, motion, sounds… |
 | `Super+Shift+M` | reduced motion: Hyprland, GTK and Shoji stop animating (again = back) |
 | `PrtSc` / `Super+Shift+P` | screenshot an area (`Super+Ctrl+P`: the screenshot menu) |
-| volume keys, keyboard knob | ensō OSD |
+| volume keys, keyboard knob | ensō OSD (in the island when it is on) |
 
 | From a terminal | |
 |---|---|
@@ -291,10 +316,21 @@ Restores the backup. Remove the Shoji lines from your Hyprland config, then log 
 | `shoji vscode` · `shoji spotify` · `shoji chrome` | turn on an app theme (once) |
 | `shoji greet` · `shoji season` · `shoji moon` | today's 候 and what is next · the season · redraw the moon |
 | `shoji-homelab init` · `shoji-homelab collect` | start watching your homelab · check now (JSON) |
+| `shoji island on` · `shoji-timer 10m tea` | the island · a timer (`list`, `toggle`, `cancel`) |
 
 Preferences live in `~/.config/shoji/prefs.json`: `"seasonal"`, `"follow_sun"`, `"weather"` (`false`,
 or `{"place": "Kyoto"}`; default: the city of your time zone), `"greet"` (one dim
 line in new terminals), `"rin"` (false = no bell), `"auto_silent"` (false = no Silent in meetings), `"reduced_motion"` (Super+Shift+M: nothing animates anywhere), `"numerals"` (`"kanji"` or `"arabic"`), `"lang"` (`"en"`, `"id"` or `"ja"`), `"ink"` (false = no ink screen), `"shimai"` (`"17:00"`, `"18:00"` or `""`), `"batch"` (0, 30 or 60), `"eye_rest"`. The Preferences popover sets all of these.
+
+One more is set by hand: `"zazen_through"`, a command that says what may still reach you during
+zazen (a coding agent waiting at a permission prompt, say). Every 5 s it prints nothing, or
+`{"text": "…", "tooltip": "…", "click": ["cmd", "arg"]}`; the text sits quietly under the ensō, no
+toast and no sound, and a click runs `click`.
+
+With the island on, its sources take the place of that: `"island_sources"`, a list of commands, each
+polled every 5 s. One prints nothing, or `{"short": "待 2", "text": "…", "click": ["cmd", "arg"],
+"through": true}`: `short` sits in the satellite, `text` in the pill when it is new; during a focus
+session only a source that says `"through"` shows.
 
 ## Make your own palette
 

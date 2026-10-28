@@ -31,7 +31,7 @@ hl.config({ general = { border_size = 1,
 
 -- glass behind every shell surface
 hl.layer_rule({ name = "shoji-blur",
-    match = { namespace = "^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-card|hypr-drawer)$" },
+    match = { namespace = "^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-card|hypr-drawer|hypr-island)$" },
     blur = true, ignore_alpha = 0.2 })
 hl.layer_rule({ name = "shoji-osd", match = { namespace = "^hypr-osd$" }, animation = "popin 90%" })
 hl.layer_rule({ name = "shoji-zazen", match = { namespace = "^hypr-zazen$" }, animation = "fade" })
@@ -111,8 +111,8 @@ general {
 }
 decoration { rounding = 16 }
 
-layerrule = blur, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-card)$
-layerrule = ignorealpha 0.2, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-card)$
+layerrule = blur, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-card|hypr-island)$
+layerrule = ignorealpha 0.2, ^(waybar|swaync-control-center|swaync-notification-window|launcher|logout_dialog|hypr-calendar|hypr-osd|hypr-pop|hypr-zazen|hypr-card|hypr-island)$
 layerrule = noanim, ^(swaync-notification-window)$
 
 bind = SUPER SHIFT, T, exec, ~/.local/bin/hypr-pop theme

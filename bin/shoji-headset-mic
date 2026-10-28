@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Use a Bluetooth headset's own mic: switch it between music (A2DP) and call (HFP) mode.
+
+  shoji-headset-mic status   waybar JSON (custom/headsetmic): hidden with no headset, muted icon in
+                             music mode, accent icon while the headset mic is the input
+  shoji-headset-mic toggle   call mode on (mic becomes the default input) / off (back to A2DP and
+                             the input you had before)
+  shoji-headset-mic state    "off", "on" or "none" (for the Sound popover)
+
+A2DP has no mic, so the headset has to drop to HFP (mono, 16 kHz) to be heard; that is Bluetooth,
+not a bug. The input chosen before the switch is remembered in $XDG_RUNTIME_DIR and restored.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+PREV = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "shoji-headset-mic.prev"
+CALL = ("headset-head-unit", "headset-head-unit-cvsd")      # mSBC first, then CVSD
+MUSIC = ("a2dp-sink", "a2dp-sink-sbc_xq", "a2dp-sink-sbc")  # LDAC first
+
+
+def sh(*cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def card():
+    """The connected Bluetooth card that can do a call profile, or None."""
+    try:
+        cards = json.loads(sh("pactl", "-f", "json", "list", "cards") or "[]")
+    except ValueError:
+        return None
+    for c in cards:
+        if c["name"].startswith("bluez_card") and c.get("active_profile") not in (None, "off") \
+                and any(p in c["profiles"] for p in CALL):
+            return c
+    return None
+
+
+def state():
+    c = card()
+    if not c:
+        return "none"
+    return "on" if c["active_profile"] in CALL else "off"
+
+
+def lucide(name):
+    info = json.loads((Path.home() / ".local/share/fonts/Shoji/lucide-info.json").read_text())
+    return chr(int(info[name]["encodedCode"].lstrip("\\"), 16))
+
+
+def sources():
+    try:
+        return json.loads(sh("pactl", "-f", "json", "list", "sources") or "[]")
+    except ValueError:
+        return []
+
+
+def make_default_input(name):
+    sh("pactl", "set-default-source", name)
+    try:
+        streams = json.loads(sh("pactl", "-f", "json", "list", "source-outputs") or "[]")
+    except ValueError:
+        streams = []
+    for s in streams:
+        sh("pactl", "move-source-output", str(s["index"]), name)
+
+
+def notify(title, body):
+    subprocess.Popen(["notify-send", "-a", "Headset mic", "-u", "low", title, body])
+
+
+def status():
+    s = state()
+    if s == "none":
+        print(json.dumps({"text": "", "class": "none"}))
+        return
+    on = s == "on"
+    tip = ("Headset mic: on — mono call quality\nClick: back to music quality" if on
+           else "Headset mic: off — music quality (no mic)\nClick: use the headset mic")
+    print(json.dumps({"text": lucide("headset" if on else "headphones"), "class": "on" if on else "off",
+                      "tooltip": tip}, ensure_ascii=False))
+
+
+def toggle():
+    c = card()
+    if not c:
+        notify("No Bluetooth headset", "Connect one with a mic first")
+        return 1
+    if c["active_profile"] in CALL:
+        profile = next(p for p in MUSIC if p in c["profiles"])
+        sh("pactl", "set-card-profile", c["name"], profile)
+        prev = PREV.read_text().strip() if PREV.exists() else ""
+        PREV.unlink(missing_ok=True)
+        if prev and any(s["name"] == prev for s in sources()):
+            make_default_input(prev)
+        notify("Headset mic off", "Back to music quality")
+    else:
+        PREV.write_text(sh("pactl", "get-default-source"))
+        sh("pactl", "set-card-profile", c["name"], next(p for p in CALL if p in c["profiles"]))
+        for _ in range(25):   # the bluez input appears a moment after the profile changes
+            mic = next((s["name"] for s in sources() if s["name"].startswith("bluez_input")), None)
+            if mic:
+                make_default_input(mic)
+                notify("Headset mic on", "Input is the headset, call quality")
+                break
+            time.sleep(0.2)
+        else:
+            notify("Headset mic", "The headset gave no mic; staying in call mode")
+    for sig in ("-RTMIN+10", "-RTMIN+11", "-RTMIN+18"):
+        sh("pkill", sig, "-x", "waybar")
+    return 0
+
+
+if __name__ == "__main__":
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+    if cmd == "status":
+        status()
+    elif cmd == "toggle":
+        sys.exit(toggle())
+    elif cmd == "state":
+        print(state())
+    else:
+        sys.exit(f"usage: {sys.argv[0]} status|toggle|state")

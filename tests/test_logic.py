@@ -460,6 +460,19 @@ class Homelab(unittest.TestCase):
                           lvl("running", "unhealthy"), lvl("paused"), lvl("exited"), lvl("restarting")],
                          ["ok", "ok", "warn", "bad", "warn", "bad", "bad"])
 
+    def test_a_healthy_container_with_no_network_is_down(self):
+        c = lambda mode, nets, status="running": {"State": {"Status": status}, "HostConfig": {"NetworkMode": mode},
+                                                  "NetworkSettings": {"Networks": nets}}
+        self.assertTrue(self.hl.offline(c("stack_default", {})))              # lost its bridge
+        self.assertFalse(self.hl.offline(c("stack_default", {"stack_default": {}})))
+        self.assertFalse(self.hl.offline(c("host", {})))
+        self.assertFalse(self.hl.offline(c("none", {})))
+        self.assertFalse(self.hl.offline(c("container:abc", {})))
+        self.assertFalse(self.hl.offline(c("stack_default", {}, "exited")))
+        item = {"state": "running", "health": "healthy", "offline": True}
+        self.assertEqual(self.hl.container_level(item), "bad")
+        self.assertIn("without a network", self.hl.container_why(item, 0))
+
     def test_units(self):
         lvl = self.hl.unit_level
         self.assertEqual(lvl("timer", {"ActiveState": "active"}, {"Result": "success"})[0], "ok")
@@ -817,6 +830,155 @@ class HotEdge(unittest.TestCase):
         while d.shield.visible and GLib.get_monotonic_time() < deadline:
             ctx.iteration(False)
         self.assertFalse(d.shield.visible)
+
+
+class ZazenThrough(unittest.TestCase):
+    def test_only_a_line_with_text_comes_through(self):
+        from shoji_widgets import overlays
+        parse = overlays.Through.parse
+        self.assertIsNone(parse(""))
+        self.assertIsNone(parse("not json"))
+        self.assertIsNone(parse('{"text": "  "}'))
+        self.assertIsNone(parse('["a list"]'))
+        got = parse('{"text": "Claude · needs permission", "click": ["hypr-pop", "claude"]}')
+        self.assertEqual(got, {"text": "Claude · needs permission", "tooltip": "",
+                               "click": ["hypr-pop", "claude"]})
+        self.assertIsNone(parse('{"text": "x", "click": "rm"}')["click"])   # click must be argv
+
+    def test_the_command_comes_from_prefs(self):
+        from shoji_widgets import overlays
+        overlays.prefs = lambda: {}
+        self.assertIsNone(overlays.Through.command())
+        overlays.prefs = lambda: {"zazen_through": "~/bin/x through"}
+        self.assertEqual(overlays.Through.command(), [str(Path.home() / "bin/x"), "through"])
+        overlays.prefs = lambda: {"zazen_through": ["/usr/bin/y"]}
+        self.assertEqual(overlays.Through.command(), ["/usr/bin/y"])
+
+
+class Island(unittest.TestCase):
+    def item(self, text, through=False):
+        return {"short": text[:1], "text": text, "tooltip": "", "click": None, "through": through}
+
+    def test_a_source_says_something_or_nothing(self):
+        from shoji_widgets.island import parse_item
+        self.assertIsNone(parse_item(""))
+        self.assertIsNone(parse_item("not json"))
+        self.assertIsNone(parse_item('{"short": "待"}'))                     # nothing to say in the pill
+        got = parse_item('{"short": "待 2", "text": "2 waiting", "click": ["hypr-pop", "claude"], "through": 1}')
+        self.assertEqual(got, {"short": "待 2", "text": "2 waiting", "tooltip": "",
+                               "click": ["hypr-pop", "claude"], "through": True})
+        self.assertEqual(parse_item('{"text": "待 asks"}')["short"], "待")    # no short: its first letter
+        self.assertIsNone(parse_item('{"text": "x", "click": "rm -rf"}')["click"])   # click must be argv
+
+    def acts(self, *kinds):
+        return [{"kind": k, "key": k, "state": {}} for k in kinds]
+
+    def test_what_the_pill_shows(self):
+        from shoji_widgets.island import choose
+        a, b, quiet = self.item("待 asks", through=True), self.item("homelab: 1 down"), None
+        timer, media = self.acts("zazen", "media")
+        self.assertEqual(choose(quiet, None, [], [], False, False), ("clock", []))
+        self.assertEqual(choose(quiet, None, [media], [b], False, False), (media, [b]))     # one joins the pill
+        self.assertEqual(choose(quiet, None, [timer, media], [b], False, False), (timer, [media, b]))  # two: apart
+        self.assertEqual(choose(("vol", 50, False), None, [timer, media], [], False, False), ("level", [media]))
+        self.assertEqual(choose(quiet, b, [media], [a, b], False, False), ("burst", [a]))   # speaks up
+        self.assertEqual(choose(quiet, b, [], [], False, False), ("clock", []))     # gone before its moment ended
+        peek = {"text": "♫ new song", "peek": True}
+        self.assertEqual(choose(quiet, peek, [media], [], False, False), ("burst", []))  # not a source: still speaks
+
+    def test_three_at_most_activities_first(self):
+        from shoji_widgets.island import choose
+        b = self.item("homelab: 1 down")
+        zazen, timer, media, more = self.acts("zazen", "timer", "media", "stopwatch")
+        self.assertEqual(choose(None, None, [zazen, timer, media, more], [b], False, False),
+                         (zazen, [timer, media]))     # three at most: the stopwatch and 待 wait for room
+
+    def test_activities_in_order(self):
+        from shoji_widgets.island import activities
+        tm = {"id": "a1", "kind": "timer"}
+        got = activities({"phase": "focus"}, None, [tm], {"title": "x", "playing": True})
+        self.assertEqual([a["key"] for a in got], ["zazen", "t:a1", "media"])
+        self.assertEqual(activities(None, None, [], {"title": "x", "playing": False}), [])   # paused music: the clock
+        paused = {"id": "p", "kind": "timer", "paused": 100}
+        got = activities(None, None, [paused, tm], {"title": "x", "playing": True})
+        self.assertEqual([a["key"] for a in got], ["t:a1", "media", "t:p"])   # what moves comes first
+
+    def test_focus_lets_only_through_sources_in(self):
+        from shoji_widgets.island import choose
+        a, b = self.item("待 asks", through=True), self.item("homelab: 1 down")
+        zazen, media = self.acts("zazen", "media")
+        self.assertEqual(choose(None, None, [zazen, media], [b], True, False), (zazen, [media]))
+        self.assertEqual(choose(None, None, [zazen], [b, a], True, False), (zazen, [a]))
+        self.assertEqual(choose(None, b, [zazen], [b, a], True, False), (zazen, [a]))   # b may not speak
+
+    def test_fullscreen_hides_all_but_a_level(self):
+        from shoji_widgets.island import choose
+        b, (media,) = self.item("homelab: 1 down"), self.acts("media")
+        self.assertEqual(choose(None, None, [media], [b], False, True), (None, []))
+        self.assertEqual(choose(("vol", 5, False), None, [], [b], False, True), ("level", []))
+
+    def test_springs_land_and_corners_stay_round(self):
+        from shoji_widgets.island import Spring, radius
+        s = Spring(0.0, 0.4, 0.75)
+        s.target = 100
+        for _ in range(120):    # two seconds of frames
+            s.step(1 / 60)
+        self.assertTrue(s.settled())
+        self.assertEqual(radius(26), 13)          # slim: a capsule
+        self.assertLess(radius(74), 37)           # tall: a rounded rectangle
+
+
+class Timers(unittest.TestCase):
+    def setUp(self):
+        from shoji_widgets import timers
+        self.tmp = tempfile.TemporaryDirectory()
+        self.t, self.old = timers, timers.DIR
+        timers.DIR = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.t.DIR = self.old
+        self.tmp.cleanup()
+
+    def test_lengths_people_type(self):
+        p = self.t.parse_duration
+        self.assertEqual([p("10m"), p("90s"), p("1h30m"), p("1:30"), p("25"), p("2min")],
+                         [600, 90, 5400, 90, 1500, 120])
+        self.assertEqual([p("tea"), p(""), p("0"), p("m")], [None] * 4)
+
+    def test_pause_keeps_what_is_left_and_the_soonest_comes_first(self):
+        t = self.t
+        long_ = t.new("timer", 600, "long", now=1000)
+        short = t.new("timer", 60, "tea", now=1000)
+        watch = t.new("stopwatch", label="run", now=900)
+        self.assertEqual([x["label"] for x in t.load(1010)], ["tea", "long", "run"])
+        t.pause(long_, now=1100)
+        self.assertEqual(t.left(t.load(5000)[1], 5000), 500)        # paused: the clock does not run
+        t.resume(long_, now=6000)
+        self.assertEqual(t.left(long_, 6100), 400)
+        self.assertEqual(t.ran(watch, 960), 60)
+        self.assertEqual([t.fmt(59.0), t.fmt(600), t.fmt(3723)], ["0:59", "10:00", "1:02:03"])
+        t.remove(short["id"])
+        self.assertEqual(len(t.load(1010)), 2)
+
+    def test_the_launcher_starts_one(self):
+        from shoji_widgets.popovers import Launcher
+        cmd = Launcher.timer_command
+        self.assertEqual(cmd("timer 10m tea time"), ["10m", "tea", "time"])
+        self.assertEqual(cmd("stopwatch run"), ["stopwatch", "run"])
+        self.assertIsNone(cmd("timer tea"))          # no length: an app search
+        self.assertIsNone(cmd("firefox"))
+
+
+class ClocksTimers(unittest.TestCase):
+    def test_read_off_the_clocks_window(self):
+        c = load("shoji-clocks")
+        self.assertEqual(c.seconds("00\u200a\u2236\u200a59\u200a\u2236\u200a50"), 3590)   # as Clocks writes it
+        self.assertIsNone(c.seconds("World"))
+        rows = c.rows([("00 ∶ 59 ∶ 50", "Pause"), ("00 ∶ 05 ∶ 00", "Start"), ("00 ∶ 04 ∶ 10", "Start")],
+                      [3600, 300, 300])
+        self.assertEqual(rows, [{"i": 0, "left": 3590, "total": 3600, "running": True},      # counting
+                                {"i": 2, "left": 250, "total": 300, "running": False}])     # paused part way
+        # timer 1 sits at its full length: not started, not shown
 
 
 class ZazenBar(unittest.TestCase):
