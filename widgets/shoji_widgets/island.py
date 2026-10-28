@@ -101,6 +101,10 @@ def track_seconds(micros):
     return seconds if 0 < seconds <= LIVE_OVER_S else 0.0
 
 
+def is_live(micros):
+    return int(micros or 0) / 1e6 > LIVE_OVER_S
+
+
 def parse_item(out):
     """A source's output as {"short", "text", "tooltip", "click", "through"}, or None for nothing."""
     try:
@@ -444,7 +448,7 @@ class Island:
             threading.Thread(target=self.read_position, daemon=True).start()
         if not pos:
             return 0, 0
-        played, length, at = pos
+        played, length, at = pos[:3]
         if self.media and self.media["playing"]:
             played += now - at
         return min(played, length), length
@@ -454,9 +458,10 @@ class Island:
             out = subprocess.run([str(HOME / ".local/bin/shoji-media"), "info"], capture_output=True, text=True,
                                  timeout=4).stdout
             d = json.loads(out)
-            got = (float(d.get("position") or 0), track_seconds(d.get("mpris:length")), time.monotonic())
+            got = (float(d.get("position") or 0), track_seconds(d.get("mpris:length")), time.monotonic(),
+                   is_live(d.get("mpris:length")))
         except (OSError, ValueError, subprocess.TimeoutExpired):
-            got = (0.0, 0.0, time.monotonic())   # no length: no bar, and the next try waits 2 s too
+            got = (0.0, 0.0, time.monotonic(), False)   # no length: no bar, and the next try waits 2 s too
         GLib.idle_add(self.set_position, got)
 
     def set_position(self, got):
@@ -1156,7 +1161,10 @@ class Island:
             self.text(cr, f'<span size="9pt">{m.get("artist", "")}</span>', bx + 74, mid + 3, a, t["muted"],
                       align="left", width=bw - 92)
             done, length = self.track_position()
-            if length:
+            if (getattr(self, "pos", None) or (0, 0, 0, False))[3]:   # a live stream: no bar, no countdown, just LIVE
+                self.text(cr, '<span size="8pt" weight="bold">LIVE</span>', bx + 74, mid + 19, a,
+                          self.cover_hex or t["accent"], align="left", width=bw - 92)
+            elif length:
                 tx, tw = bx + 74, bw - 92 - 44
                 self.track(cr, tx, mid + 19, tw, 1.0, rgba(t["text"], 0.14 * a), 3)
                 self.track(cr, tx, mid + 19, tw, min(1.0, done / length), rgba(self.cover_hex or t["accent"], a), 3)

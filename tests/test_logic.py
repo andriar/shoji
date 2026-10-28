@@ -924,6 +924,10 @@ class Island(unittest.TestCase):
         self.assertEqual(track_seconds(0), 0.0)
         self.assertEqual(track_seconds(None), 0.0)
         self.assertEqual(track_seconds(-1), 0.0)
+        from shoji_widgets.island import is_live
+        self.assertTrue(is_live(9223372036854775807))
+        self.assertFalse(is_live(215_000_000))
+        self.assertFalse(is_live(0))
 
     def test_springs_land_and_corners_stay_round(self):
         from shoji_widgets.island import Spring, radius

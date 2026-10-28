@@ -14,7 +14,8 @@
   the bar's plain toggles close an open popover first (`hypr-pop close`).
 - With the island on, the Koyomi pair hangs under the bell at the right instead of the centre line.
 - A live stream no longer shows a nonsense countdown in the island: YouTube Live reports a track length
-  of int64 max, which came out as "-2562047:88:0". A length over a day now means no bar and no time.
+  of int64 max, which came out as "-2562047:88:0". A length over a day now means a live stream: the
+  media card shows LIVE in the cover's colour instead of a bar and a time.
 
 ## 0.8.1 — 2026-10-27
 
