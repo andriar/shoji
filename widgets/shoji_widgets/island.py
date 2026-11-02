@@ -543,7 +543,7 @@ class Island:
         moved = self.place(drops)
         if self.same(main, self.main):
             self.main = main      # fresh numbers, same shape: no morph
-            if moved:
+            if moved or not self.lv.settled(0.002):   # a level bar still gliding needs frames too
                 self.animate()
             self.redraw()
             return
