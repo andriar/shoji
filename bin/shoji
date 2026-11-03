@@ -1642,6 +1642,19 @@ def cmd_island(want):
     PREFS.write_text(json.dumps(prefs, indent=1, ensure_ascii=False) + "\n")
     run("python3", str(CFG / "shoji/gen_waybar.py"))
     run("pkill", "-SIGUSR2", "-x", "waybar")
+    restart_widgets()
+    print(want)
+
+
+def restart_widgets():
+    """hypr-widgets anew: through systemd when the shell runs as units (shoji-session), else by hand.
+    By hand under the units would race systemd's own restart, and the loser exits 'already running'."""
+    try:
+        if subprocess.run([str(HOME / ".local/bin/shoji-session"), "restart", "widgets"],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20).returncode == 0:
+            return
+    except (OSError, subprocess.TimeoutExpired):
+        pass
     pidfile = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "hypr-widgets.pid"
     try:
         pid = int(pidfile.read_text())
@@ -1654,7 +1667,6 @@ def cmd_island(want):
         pass
     subprocess.Popen([str(HOME / ".local/bin/hypr-widgets")], stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, start_new_session=True)
-    print(want)
 
 
 def main():

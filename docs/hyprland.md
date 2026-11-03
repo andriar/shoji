@@ -11,9 +11,11 @@ local c = require("theme")   -- ~/.config/hypr/theme.lua, written by `shoji appl
 -- autostart
 hl.on("hyprland.start", function()
     hl.exec_cmd("~/.local/bin/shoji apply")      -- re-applies the saved palette, quietly
-    hl.exec_cmd("waybar")
-    hl.exec_cmd("swaync")
-    hl.exec_cmd("~/.local/bin/hypr-widgets")     -- ensō OSD, Koyomi calendar, popovers, theme manager
+    -- bar, notifications, widgets (ensō OSD, Koyomi, popovers, island) and the hotplug watchdog as
+    -- systemd user units: a crash restarts the piece that died, `journalctl --user -u shoji-widgets`
+    -- says why, `shoji-session status` shows them. They stop when this Hyprland ends.
+    -- Without systemd, start them yourself instead: waybar, swaync, ~/.local/bin/hypr-widgets
+    hl.exec_cmd("~/.local/bin/shoji-session start")
     hl.exec_cmd("~/.local/bin/hypr-term --service")  -- optional: keeps one ghostty running for instant windows
     hl.exec_cmd("~/.local/bin/shoji wallpaper")  -- ink-mountain wallpaper via awww, hyprpaper or swaybg
 end)
@@ -98,9 +100,7 @@ then run `Hyprland --verify-config`.
 source = ~/.config/hypr/theme.conf
 
 exec-once = ~/.local/bin/shoji apply
-exec-once = waybar
-exec-once = swaync
-exec-once = ~/.local/bin/hypr-widgets
+exec-once = ~/.local/bin/shoji-session start   # or, without systemd: waybar, swaync, hypr-widgets
 exec-once = ~/.local/bin/hypr-term --service
 exec-once = ~/.local/bin/shoji wallpaper
 

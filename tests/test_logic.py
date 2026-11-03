@@ -1039,5 +1039,38 @@ class Accessibility(unittest.TestCase):
         self.assertFalse(base.is_glyph("Save"))
 
 
+class Units(unittest.TestCase):
+    """The systemd user units shoji-session starts: one anchor, the pieces bound to it."""
+    DIR = REPO / "config/systemd/user"
+
+    def read(self, name):
+        keys = {}
+        for line in (self.DIR / name).read_text().splitlines():
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                keys.setdefault(k, []).append(v)
+        return keys
+
+    def test_the_anchor_wants_every_piece_and_each_is_bound_to_it(self):
+        anchor = self.read("shoji-session.service")
+        pieces = anchor["Wants"][0].split()
+        self.assertEqual(sorted(pieces), sorted(p.name for p in self.DIR.glob("*.service") if p.name != "shoji-session.service"))
+        script = (REPO / "bin/shoji-session").read_text()
+        for p in pieces:
+            u = self.read(p)
+            self.assertEqual(u["BindsTo"], ["shoji-session.service"], p)   # ends with the Hyprland session
+            self.assertEqual(u["PartOf"], ["shoji-session.service"], p)    # restarts with `shoji-session start`
+            self.assertIn(p.removeprefix("shoji-").removesuffix(".service"), script.split("PIECES=(")[1].split(")")[0])
+
+    def test_our_scripts_exist_and_restarts_keep_what_was_opened(self):
+        for p in self.DIR.glob("*.service"):
+            cmd = self.read(p.name)["ExecStart"][0].split()[0]
+            if cmd.startswith("%h/.local/bin/"):
+                self.assertTrue((REPO / "bin" / cmd.removeprefix("%h/.local/bin/")).exists(), cmd)
+        for p in ("shoji-bar.service", "shoji-widgets.service"):   # what a click opens lives in their cgroup
+            self.assertEqual(self.read(p)["KillMode"], ["process"], p)
+        self.assertEqual(self.read("shoji-widgets.service")["RestartPreventExitStatus"], ["3"])  # ALREADY
+
+
 if __name__ == "__main__":
     unittest.main()

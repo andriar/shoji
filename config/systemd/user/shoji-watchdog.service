@@ -1,0 +1,11 @@
+[Unit]
+Description=Shoji watchdog (puts the shell back together after a monitor hotplug)
+Documentation=https://github.com/andriar/shoji
+PartOf=shoji-session.service
+BindsTo=shoji-session.service
+After=shoji-bar.service shoji-widgets.service
+
+[Service]
+ExecStart=%h/.local/bin/shoji-watchdog
+Restart=always
+RestartSec=5

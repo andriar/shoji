@@ -1,0 +1,19 @@
+[Unit]
+Description=Shoji widgets (island, popovers, OSD, Koyomi, launcher)
+Documentation=https://github.com/andriar/shoji
+PartOf=shoji-session.service
+BindsTo=shoji-session.service
+After=shoji-session.service shoji-notify.service
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Service]
+# systemd is the keeper: skip hypr-widgets' own restart loop, its stderr goes to the journal
+Environment=SHOJI_WIDGETS_CHILD=1
+ExecStart=%h/.local/bin/hypr-widgets
+Restart=always
+RestartSec=1
+# 3 = another hypr-widgets already runs (started by hand): leave that one alone
+RestartPreventExitStatus=3
+# apps started from the launcher live in this unit's cgroup: a restart must not close them
+KillMode=process

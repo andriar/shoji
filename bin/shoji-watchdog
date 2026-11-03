@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Keep the shell whole across a monitor hotplug: many monitors drop off DisplayPort when the screen
+# turns off (DPMS, not only sleep), and come back as a new output. Waybar then stacks a second bar,
+# the wallpaper falls back to a solid colour and the widgets keep a window on the gone output.
+#   1. On Hyprland's monitoradded event (needs socat): restart the bar and the widgets, restore the wallpaper.
+#   2. Every 15 s, as a net for missed events: more bars or edge strips than monitors, a bar left
+#      on the bottom layer, a solid-colour wallpaper; swaync gone (when not run as units).
+# Runs as shoji-watchdog.service (shoji-session start); standalone it restarts things the old way.
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/shoji-watchdog.lock"; flock -n 9 || exit 0
+BIN="$HOME/.local/bin"
+RUN="${XDG_RUNTIME_DIR:-/run/user/$UID}"
+log() { logger -t shoji-watchdog "$1"; echo "$1"; }
+
+restart_bar() {
+    "$BIN/shoji-session" restart bar 9>&- && return
+    pkill -x waybar
+    sleep 3   # an `until waybar` autostart loop brings it back by itself
+    pgrep -x waybar >/dev/null || setsid waybar >/dev/null 2>&1 </dev/null 9>&- &
+}
+restart_widgets() {
+    "$BIN/shoji-session" restart widgets 9>&- && return
+    pkill -f "^python3 $BIN/hypr-widgets\$"   # the keeper and its child
+    sleep 1
+    setsid "$BIN/hypr-widgets" >/dev/null 2>&1 </dev/null 9>&- &
+}
+wall_restore() { [ -x "$BIN/hypr-wall" ] && "$BIN/hypr-wall" restore 9>&-; }
+awww_cmd() { command -v awww || { [ -x "$HOME/.cargo/bin/awww" ] && echo "$HOME/.cargo/bin/awww"; }; }
+
+recover() {
+    log "$1"
+    restart_bar
+    wall_restore
+    restart_widgets
+}
+
+sock=$(ls -d "$RUN"/hypr/"${HYPRLAND_INSTANCE_SIGNATURE:-*}"/.socket2.sock 2>/dev/null | tail -1)
+if [ -n "$sock" ] && command -v socat >/dev/null; then
+    socat -U - "UNIX-CONNECT:$sock" 9>&- | while read -r line; do
+        case $line in
+            monitoradded*) sleep 4; recover "monitor added, restarting the shell: ${line%%>>*}" ;;
+        esac
+    done &
+fi
+
+strikes=0
+awww=$(awww_cmd)
+while sleep 15 9>&-; do
+    # swaync gone: nothing owns org.freedesktop.Notifications, the bell goes blank and every
+    # swaync-client call hangs. As units, systemd restarts it (and must be the only one to).
+    if ! systemctl --user is-active -q shoji-session.service 2>/dev/null && ! pgrep -x swaync >/dev/null; then
+        log "swaync is down, restarting"
+        pkill -f '^swaync-client '
+        setsid swaync >/dev/null 2>&1 </dev/null 9>&- &
+        sleep 2
+        pkill -SIGUSR2 -x waybar
+    fi
+    layers=$(hyprctl layers 2>/dev/null)
+    mons=$(hyprctl monitors 2>/dev/null | grep -c '^Monitor')
+    bars=$(grep -c 'namespace: waybar' <<<"$layers")
+    if [ "$mons" -gt 0 ] && [ "$bars" -gt "$mons" ]; then strikes=$((strikes + 1)); else strikes=0; fi
+    if [ "$strikes" -ge 2 ]; then
+        strikes=0
+        log "bars=$bars monitors=$mons, restarting the bar"
+        restart_bar
+    fi
+    # a bar on the bottom layer (outside zazen, which hides it on purpose) sits under swaync's
+    # click catcher, so the bell can no longer close the panel: a reload puts it back on top
+    lvl=$(awk '/Layer level/{l=$3} /namespace: waybar/{print l; exit}' <<<"$layers")
+    if [ "$lvl" = "1" ] && [ ! -e "$RUN/shoji-zazen.json" ]; then
+        log "the bar is on the bottom layer, reloading it"
+        pkill -SIGUSR2 -x waybar
+    fi
+    # stale widgets after a hotplug: a second edge strip and no island
+    edges=$(grep -c 'namespace: hypr-edge' <<<"$layers")
+    if [ "$mons" -gt 0 ] && [ "$edges" -gt "$mons" ]; then
+        log "edges=$edges monitors=$mons, restarting the widgets"
+        restart_widgets
+    fi
+    if [ -n "$awww" ] && "$awww" query 2>/dev/null | grep -q 'color:'; then
+        wall_restore
+    fi
+done

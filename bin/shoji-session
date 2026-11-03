@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Shoji's shell as systemd user units: a crash restarts the piece that died, and the journal keeps
+# why (journalctl --user -u shoji-widgets). Nothing here runs in other desktops: only Hyprland's
+# autostart calls `start`, and the units stop on their own when that Hyprland ends.
+#
+#   shoji-session start           from Hyprland's autostart: hand the session's environment to
+#                                 systemd, then (re)start bar, notifications, widgets and watchdog
+#   shoji-session stop            stop them all
+#   shoji-session status          one line per unit
+#   shoji-session restart PIECE   restart bar | notify | widgets | watchdog; exits 1 when the shell
+#                                 is not running as units, so callers fall back to their old way
+#   shoji-session anchor          shoji-session.service itself: lasts as long as this Hyprland
+set -u
+PIECES=(bar notify widgets watchdog)
+
+managed() { systemctl --user is-active -q shoji-session.service 2>/dev/null; }
+
+case "${1:-status}" in
+  start)
+    # everything an app started from the bar or the launcher needs (cursor theme, Qt platform…):
+    # the units' children get systemd's environment, not Hyprland's
+    dbus-update-activation-environment --systemd --all 2>/dev/null ||
+      systemctl --user import-environment WAYLAND_DISPLAY DISPLAY HYPRLAND_INSTANCE_SIGNATURE \
+        XDG_CURRENT_DESKTOP XDG_SESSION_TYPE PATH
+    # a unit that crash-looped while the last session ended stays refused until this
+    systemctl --user reset-failed 'shoji-*' 2>/dev/null
+    exec systemctl --user restart shoji-session.service ;;
+  stop)
+    exec systemctl --user stop shoji-session.service ;;
+  status)
+    for u in session "${PIECES[@]}"; do
+      printf '%-16s %s\n' "shoji-$u" "$(systemctl --user is-active "shoji-$u.service" 2>/dev/null)"
+    done ;;
+  restart)
+    case " ${PIECES[*]} " in *" ${2:-} "*) ;; *) echo "restart: one of ${PIECES[*]}" >&2; exit 2 ;; esac
+    managed || exit 1
+    exec systemctl --user restart "shoji-$2.service" ;;
+  anchor)
+    sock="${XDG_RUNTIME_DIR:-/run/user/$UID}/hypr/${HYPRLAND_INSTANCE_SIGNATURE:?not set: run shoji-session start from Hyprland}/.socket.sock"
+    # a lingering user manager outlives the login: end with this Hyprland, so the bound units
+    # stop too instead of crash-looping without a display
+    while [ -S "$sock" ] && hyprctl version >/dev/null 2>&1; do sleep 5; done
+    echo "Hyprland ${HYPRLAND_INSTANCE_SIGNATURE} ended" ;;
+  *)
+    sed -n '6,13p' "$0" | cut -c3-; exit 2 ;;
+esac

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- The shell runs as systemd user units: `shoji-session start` in Hyprland's autostart starts the
+  bar, swaync, the widgets and a hotplug watchdog (`shoji-bar`, `shoji-notify`, `shoji-widgets`,
+  `shoji-watchdog`), bound to one `shoji-session.service` that ends with that Hyprland, so a
+  lingering user manager does not keep them crash-looping after logout. A crash restarts only the
+  piece that died, and `journalctl --user -u shoji-widgets` keeps why (the widgets' stderr no
+  longer mixes into one log with every app the launcher started). Restarting the bar or the
+  widgets leaves the apps they opened running. `shoji-session status` shows the four pieces.
+- `shoji-watchdog` (new): after a monitor drops off DisplayPort when the screen turns off, it
+  restarts the bar and the widgets, restores the wallpaper, and every 15 s checks for a second bar,
+  a second edge strip, a bar stuck on the bottom layer or a solid-colour wallpaper.
+- `shoji island on|off` restarts the widgets through systemd when they run as units.
 - The shell survives a monitor that drops off DisplayPort when it sleeps: popovers no longer die
   with the widgets' command reader. One bad command used to remove the fifo watch for good, so
   Super+Space and every popover went silent while the process looked alive. Each command is now

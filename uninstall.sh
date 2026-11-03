@@ -5,6 +5,11 @@ last="$HOME/.local/share/shoji/last-backup"
 [ -s "$last" ] || { echo "No Shoji backup found."; exit 1; }
 backup=$(cat "$last")
 "$HOME/.local/bin/shoji-ink" stop 2>/dev/null || true
+systemctl --user stop shoji-session.service 2>/dev/null || true
+for u in "$(cd "$(dirname "$0")" && pwd)"/config/systemd/user/*.service; do
+  rm -f "$HOME/.config/systemd/user/$(basename "$u")"
+done
+systemctl --user daemon-reload 2>/dev/null || true
 echo "Restoring $backup"
 tar xzf "$backup" -C "$HOME"
 # every script Shoji installs, unless the backup had one of that name (then it was restored above)

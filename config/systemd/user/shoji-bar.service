@@ -1,0 +1,18 @@
+[Unit]
+Description=Shoji bar (waybar)
+Documentation=https://github.com/andriar/shoji
+PartOf=shoji-session.service
+BindsTo=shoji-session.service
+# after swaync: the bell's `swaync-client -swb` hangs when nothing owns the notification bus
+After=shoji-session.service shoji-notify.service
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Service]
+ExecStart=waybar
+ExecReload=kill -SIGUSR2 $MAINPID
+Restart=always
+RestartSec=1
+# what a click on the bar opens (pavucontrol, btop…) lives in this unit's cgroup: a restart of
+# the bar must not close it
+KillMode=process

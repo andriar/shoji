@@ -67,6 +67,12 @@ done
 mkdir -p "$HOME/.local/share/shoji/widgets/shoji_widgets"
 install -m 644 "$REPO"/widgets/shoji_widgets/*.py "$HOME/.local/share/shoji/widgets/shoji_widgets/"
 install -m 644 "$REPO"/generators/*.py "$HOME/.config/shoji/"
+# the shell as systemd user units (shoji-session start); only Hyprland's autostart starts them
+if command -v systemctl >/dev/null; then
+  mkdir -p "$HOME/.config/systemd/user"
+  install -m 644 "$REPO"/config/systemd/user/*.service "$HOME/.config/systemd/user/"
+  systemctl --user daemon-reload 2>/dev/null || true
+fi
 
 say "5/6 Configs"
 mkdir -p "$HOME/.config/fuzzel" "$HOME/.config/wlogout" "$HOME/.config/hypr" "$HOME/.config/waybar" "$HOME/.config/swaync"
@@ -97,6 +103,7 @@ cat <<EOF
 
 Done. Two things left for you:
   1. Add the Hyprland lines from docs/hyprland.md (autostart, blur, keybinds), then log out and in.
+     Autostart runs \`shoji-session start\`: bar, notifications and widgets as systemd user units.
      Fonts only show up in waybar/swaync after they restart.
   2. Super+Shift+T opens the theme manager. \`shoji list\` shows every palette.
 
