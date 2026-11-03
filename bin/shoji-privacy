@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+"""見 Mi: who is using the microphone or the camera right now, for the island's privacy droplet.
+
+  shoji-privacy          print it once
+  shoji-privacy watch    a line whenever it changes (hypr-widgets reads this)
+
+Prints JSON: {"mic": ["Google Chrome"], "mic_muted": false, "camera": ["zoom"]}
+
+Microphone: PipeWire's capture streams as pactl lists them, minus paused (corked) ones, ones that
+record a speaker (a .monitor source: visualisers, recorders of what plays) and level meters. Woken
+by `pactl subscribe`, never polled. Camera: the processes that hold /dev/video* open, read from
+/proc when inotify says a camera opened or closed, or one was plugged in. Screen sharing is not
+here: hypr-widgets hears it from Hyprland itself."""
+import ctypes
+import json
+import os
+import struct
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+LEVEL_METERS = {"pavucontrol", "pwvucontrol", "cava", "easyeffects", "qpwgraph", "helvum"}
+NOT_AN_APP = {"pipewire", "wireplumber", "pipewire-media-session"}   # they open a camera to list it
+SETTLE_S = 0.3   # streams come and go in bursts (a call joins: three events in 40 ms): look once after
+
+
+def pactl_json(*args):
+    try:
+        out = subprocess.run(["pactl", "-f", "json", *args], capture_output=True, text=True, timeout=4).stdout
+        return json.loads(out or "[]")
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return []
+
+
+def mic_users(outputs, sources):
+    """App names recording a microphone, first come first, once each."""
+    monitor = {s.get("index"): s.get("name", "").endswith(".monitor") for s in sources}
+    monitor.update({s.get("name"): s.get("name", "").endswith(".monitor") for s in sources})
+    names = []
+    for o in outputs:
+        p = o.get("properties") or {}
+        binary = os.path.basename(p.get("application.process.binary") or "")
+        if o.get("corked") or monitor.get(o.get("source"), False):
+            continue
+        if binary in LEVEL_METERS or p.get("media.name") == "Peak detect":
+            continue
+        name = p.get("application.name") or binary or "?"
+        if name not in names:
+            names.append(name)
+    return names
+
+
+def mic_muted():
+    try:
+        out = subprocess.run(["pactl", "get-source-mute", "@DEFAULT_SOURCE@"], capture_output=True, text=True,
+                             timeout=4).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return out.strip().lower().endswith("yes")
+
+
+def camera_users(proc=Path("/proc"), me=os.getpid()):
+    """Names of the processes holding a camera (/dev/video*) open; only yours are readable."""
+    names = []
+    for pid in proc.iterdir():
+        if not pid.name.isdigit() or int(pid.name) == me:
+            continue
+        try:
+            fds = list((pid / "fd").iterdir())
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                target = os.readlink(fd)
+            except OSError:
+                continue
+            if target.startswith("/dev/video"):
+                try:
+                    name = (pid / "comm").read_text().strip()
+                except OSError:
+                    break
+                if name not in NOT_AN_APP and name not in names:
+                    names.append(name)
+                break
+    return names
+
+
+def mic_state():
+    return {"mic": mic_users(pactl_json("list", "source-outputs"), pactl_json("list", "sources")),
+            "mic_muted": mic_muted()}
+
+
+def state():
+    return {**mic_state(), "camera": camera_users()}
+
+
+# ---- watch: wake on events, look once they settle
+IN_OPEN, IN_CLOSE_WRITE, IN_CLOSE_NOWRITE = 0x20, 0x08, 0x10
+IN_CREATE, IN_DELETE = 0x100, 0x200
+
+
+class Wake:
+    """What changed since the last look: "mic", "camera" or both. Reading every process's open
+    files costs ~100 ms, so the camera is only looked at again when inotify says so."""
+    def __init__(self):
+        self.what, self.cond = set(), threading.Condition()
+
+    def set(self, what):
+        with self.cond:
+            self.what.add(what)
+            self.cond.notify()
+
+    def take(self):
+        with self.cond:
+            while not self.what:
+                self.cond.wait()
+        time.sleep(SETTLE_S)
+        with self.cond:
+            what, self.what = self.what, set()
+        return what
+
+
+def follow_pactl(wake):
+    """pactl subscribe until PipeWire goes, then again (it restarts with the session)."""
+    while True:
+        try:
+            proc = subprocess.Popen(["pactl", "subscribe"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                    text=True)
+        except OSError:
+            return
+        for line in proc.stdout:
+            if "source" in line or "server" in line:   # 'source' also matches 'source-output'
+                wake.set("mic")
+        proc.wait()
+        time.sleep(2)
+        wake.set("mic")
+
+
+def follow_cameras(wake):
+    """inotify: /dev for cameras plugged in or out, each /dev/video* for opens and closes."""
+    libc = ctypes.CDLL("libc.so.6", use_errno=True)
+    fd = libc.inotify_init1(0)
+    if fd < 0:
+        return
+    dev = libc.inotify_add_watch(fd, b"/dev", IN_CREATE | IN_DELETE)
+
+    def watch_cameras():
+        for v in Path("/dev").glob("video*"):
+            libc.inotify_add_watch(fd, str(v).encode(), IN_OPEN | IN_CLOSE_WRITE | IN_CLOSE_NOWRITE)
+
+    watch_cameras()
+    while True:
+        buf = os.read(fd, 4096)
+        i, plugged = 0, False
+        while i + 16 <= len(buf):
+            wd, _mask, _cookie, n = struct.unpack_from("iIII", buf, i)
+            name = buf[i + 16:i + 16 + n].rstrip(b"\0")
+            i += 16 + n
+            if wd == dev and not name.startswith(b"video"):
+                continue
+            plugged = plugged or wd == dev
+            wake.set("camera")
+        if plugged:
+            watch_cameras()
+
+
+def watch():
+    wake = Wake()
+    threading.Thread(target=follow_pactl, args=(wake,), daemon=True).start()
+    threading.Thread(target=follow_cameras, args=(wake,), daemon=True).start()
+    now, last = state(), None
+    while True:
+        if now != last:
+            print(json.dumps(now, ensure_ascii=False), flush=True)
+            last = now
+        what = wake.take()
+        now = {**now, **(mic_state() if "mic" in what else {}),
+               **({"camera": camera_users()} if "camera" in what else {})}
+
+
+def main():
+    if sys.argv[1:] == ["watch"]:
+        try:
+            watch()
+        except (BrokenPipeError, KeyboardInterrupt):
+            pass
+    elif not sys.argv[1:]:
+        print(json.dumps(state(), ensure_ascii=False))
+    else:
+        sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

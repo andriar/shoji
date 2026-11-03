@@ -13,6 +13,12 @@
   restarts the bar and the widgets, restores the wallpaper, and every 15 s checks for a second bar,
   a second edge strip, a bar stuck on the bottom layer or a solid-colour wallpaper.
 - `shoji island on|off` restarts the widgets through systemd when they run as units.
+- 見 Privacy in the island: a droplet at the far right while an app records the microphone or the
+  camera, or the screen is shared, with a glyph per kind (mic amber, camera green, screen in the
+  accent). It never takes one of the three places. A click names the apps (Microphone · Slack ·
+  muted), a right-click mutes the mic. New `shoji-privacy`: capture streams from `pactl subscribe`
+  (paused ones, level meters and speaker `.monitor` recordings left out), cameras from the
+  processes holding `/dev/video*`, read only when inotify says one opened or closed.
 - The shell survives a monitor that drops off DisplayPort when it sleeps: popovers no longer die
   with the widgets' command reader. One bad command used to remove the fifo watch for good, so
   Super+Space and every popover went silent while the process looked alive. Each command is now

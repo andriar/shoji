@@ -183,6 +183,9 @@ class NotifyFocus:
             GLib.idle_add(self.check_fullscreen)
         if event == "screencast" and self.meetings:  # "1,0" sharing a monitor, "1,1" a window, "0,…" stopped
             self.meetings.set("screen", addr.startswith("1"))
+        if event == "screencast" and self.island:   # 見: the privacy droplet says the screen is shared
+            on, _, owner = addr.partition(",")
+            GLib.idle_add(self.island.set_screen, ("window" if owner == "1" else "screen") if on == "1" else None)
         if event == "urgent" and time.monotonic() < self.armed:
             self.armed = 0
             sh("hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:0x{addr.removeprefix("0x")}" }})')

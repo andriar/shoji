@@ -16,6 +16,12 @@ popovers and a click on the island opens them.
   borrowed    a level (volume, mic, brightness) for 1.4 s or something that just spoke up takes
               the whole pill for a moment, then gives it back
 
+見 Mi, privacy: while an app records the microphone or the camera, or the screen is shared, a
+small droplet at the far right shows which (mic amber, camera green, screen in the accent), outside
+the three: it never pushes an activity out, and nothing pushes it out. A click opens it into a card
+that names the apps; a right click mutes the microphone. shoji-privacy watches the mic and camera,
+Hyprland's screencast event says the screen.
+
 Activities, first first: a zazen session, the 遠 eye rest, timers and stopwatches (shoji-timer's,
 and GNOME Clocks' timers read off its window by shoji-clocks; the one ending first first), the
 music while it plays. Never more than three show at once.
@@ -136,10 +142,25 @@ def activities(zazen, eyes, user_timers, media):
     return acts + [as_act(t) for t in user_timers if t.get("paused")]
 
 
-def choose(level, burst, acts, items, focus, fullscreen):
+def privacy_rows(st):
+    """(glyph, colour token, what, who) per kind of capture going on, mic first."""
+    rows = []
+    if st.get("mic"):
+        rows.append(("mic-off" if st.get("mic_muted") else "mic", "warn", T("Microphone"),
+                     ", ".join(st["mic"]) + (" · " + T("muted") if st.get("mic_muted") else "")))
+    if st.get("camera"):
+        rows.append(("video", "ok", T("Camera"), ", ".join(st["camera"])))
+    if st.get("screen"):
+        rows.append(("screen-share", "accent", T("Screen sharing"),
+                     T("one window") if st["screen"] == "window" else T("whole screen")))
+    return rows
+
+
+def choose(level, burst, acts, items, focus, fullscreen, privacy=None):
     """(main, droplets): main is "level", "burst", the first activity (its wings round the clock),
     "clock", or None (hidden); the droplets are the other activities, then source items, three at
-    most. A level or a burst borrows the pill and leaves the droplets as they were."""
+    most, then the privacy droplet, which never counts. A level or a burst borrows the pill and
+    leaves the droplets as they were."""
     shown = [i for i in items if i and (i["through"] or not focus)]
     if fullscreen:
         return ("level" if level else None), []
@@ -150,7 +171,7 @@ def choose(level, burst, acts, items, focus, fullscreen):
         main, drops = "burst", [d for d in drops if d.get("text") != burst["text"]]
     else:
         main = acts[0] if acts else "clock"
-    return main, drops[:MAX_DROPS]
+    return main, drops[:MAX_DROPS] + ([privacy] if privacy else [])
 
 
 class Drop:
@@ -211,6 +232,7 @@ class Island:
         self.media, self.cover, self.cover_hex = None, None, None
         self.items, self.seen = {}, {}      # source command -> item; -> what it last said
         self.burst, self.fullscreen = None, False
+        self.privacy, self.screen = {}, None   # shoji-privacy's mic and camera; "screen" / "window" while shared
         self.level_timer = self.burst_timer = self.eq_timer = 0
         # what is shown and how it moves
         self.main, self.drops = self.compose("clock"), []
@@ -230,6 +252,7 @@ class Island:
         self.poll()
         GLib.timeout_add_seconds(SOURCE_S, self.poll)
         threading.Thread(target=self.follow_media, daemon=True).start()
+        threading.Thread(target=self.follow_privacy, daemon=True).start()
         if shutil.which("gnome-clocks") and prefs().get("island_clocks", True):
             threading.Thread(target=self.follow_clocks, daemon=True).start()
 
@@ -367,6 +390,35 @@ class Island:
             self.refresh()
         return False
 
+    def follow_privacy(self):
+        """shoji-privacy watch: a line whenever the apps on the mic or the camera change."""
+        try:
+            proc = subprocess.Popen([str(HOME / ".local/bin/shoji-privacy"), "watch"], stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, text=True, preexec_fn=die_with_us)
+        except OSError:
+            return
+        for line in proc.stdout:
+            try:
+                got = json.loads(line)
+            except ValueError:
+                continue
+            GLib.idle_add(self.set_privacy, got)
+
+    def set_privacy(self, got):
+        self.privacy = got
+        self.refresh()
+        return False
+
+    def set_screen(self, what):
+        """Hyprland's screencast event: "screen" or "window" while shared, None once it stops."""
+        self.screen = what
+        self.refresh()
+        return False
+
+    def privacy_item(self):
+        st = {**self.privacy, "screen": self.screen}
+        return {"kind": "privacy", "key": "privacy", "state": st} if privacy_rows(st) else None
+
     def follow_media(self):
         """shoji-media watch prints a line whenever the track or its state changes; on a new
         track, shoji-media info names the cover (fetching it when it is on the web)."""
@@ -489,10 +541,10 @@ class Island:
 
     def refresh(self):
         item_list = [self.items[k] for k in self.items if self.items[k]]
-        acts = self.acts()
-        if self.picked and not any(a["key"] == self.picked for a in acts):
+        acts, privacy = self.acts(), self.privacy_item()
+        if self.picked and not any(a["key"] == self.picked for a in acts + [privacy] if a):
             self.picked = None              # it ended while open
-        main, drops = choose(self.level, self.burst, acts, item_list, self.focus(), self.fullscreen)
+        main, drops = choose(self.level, self.burst, acts, item_list, self.focus(), self.fullscreen, privacy)
         if main is None:
             self.win.hide()
             return
@@ -525,12 +577,26 @@ class Island:
         if k == "burst":
             return min(460, 44 + self.measure(self.burst_markup(o), 400) + 18), 34
         if k == "card":
-            return OPEN[o["kind"]]
+            return self.open_size(o)
         if k == "drop":
-            if o.get("kind") in DROP_W:
-                return DROP_W[o["kind"]], BAND
+            if o.get("kind") in DROP_W or o.get("kind") == "privacy":
+                return self.drop_w(o), BAND
             return max(30, self.measure(f'<span size="9pt" weight="500">{esc(o["short"])}</span>') + 20), BAND
         return CORE_W, BAND
+
+    @staticmethod
+    def drop_w(o):
+        if o["kind"] == "privacy":   # a glyph per kind of capture
+            return 14 + 16 * len(privacy_rows(o["state"]))
+        return DROP_W[o["kind"]]
+
+    def open_size(self, o):
+        if o["kind"] == "privacy":
+            rows = privacy_rows(o["state"])
+            width = max(self.measure(f'<span size="9pt" weight="500">{esc(what)}</span>') + 8
+                        + self.measure(f'<span size="9pt">{esc(who)}</span>') for _g, _c, what, who in rows)
+            return int(min(340, max(240, width + 64))), BAND + 18 + 20 * len(rows)   # 340: room beside two droplets on the 1240 px surface
+        return OPEN[o["kind"]]
 
     def burst_markup(self, item):
         text = item["text"] if item.get("markup") else esc(item["text"])   # shoji-media escapes its own
@@ -765,6 +831,8 @@ class Island:
         if k == "timer" and act["state"].get("clocks"):
             return {1: [f"{bin_}/shoji-clocks", "toggle", str(act["state"]["i"])],
                     3: [f"{bin_}/hypr-focus-or-launch", "gnome.clocks", "gnome-clocks"]}
+        if k == "privacy":   # the audio popover lists the inputs; a right click mutes the mic
+            return {1: [f"{bin_}/hypr-pop", "audio"], 3: ["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"]}
         if k in ("timer", "stopwatch"):
             tid = act["state"]["id"]
             return {1: [f"{bin_}/shoji-timer", "toggle", tid], 3: [f"{bin_}/shoji-timer", "cancel", tid]}
@@ -852,6 +920,9 @@ class Island:
             return t["muted"] if st.get("paused") else t["accent"]
         if k in ("eyes", "stopwatch"):
             return t["muted"]
+        if k == "privacy":
+            rows = privacy_rows(st)
+            return t.get(rows[0][1], t["accent"]) if rows else None
         if view["kind"] in ("burst", "drop") and o.get("through"):
             return t["accent"]
         return None
@@ -1062,9 +1133,9 @@ class Island:
                 return
             # the droplet's own face holds at its left while it widens, and gives way to the
             # card's details, centred in the card (no clock up there to make room for)
-            ow, oh = OPEN[o["kind"]]
+            ow, oh = self.open_size(o)
             reveal = max(0.0, min(1.0, (h - BAND - 4) / (oh - BAND - 4)))
-            self.mini(cr, o, x + DROP_W[o["kind"]] / 2, cy, a * (1 - reveal) ** 2, t)
+            self.mini(cr, o, x + self.drop_w(o) / 2, cy, a * (1 - reveal) ** 2, t)
             if reveal > 0.01:
                 self.body(cr, o, x, y + BAND / 2 + 6 * (1 - reveal), ow, oh - BAND, a * reveal ** 1.5, t)
         elif k == "level":
@@ -1144,6 +1215,11 @@ class Island:
         elif k == "media":
             self.draw_cover(cr, cx - 11, cy, 18, a, t)
             self.draw_bars(cr, cx + 12, cy, a, t, n=3)
+        elif k == "privacy":
+            rows = privacy_rows(st)
+            x0 = cx - 8 * (len(rows) - 1)
+            for i, (g, col, _what, _who) in enumerate(rows):
+                self.glyph(cr, g, x0 + 16 * i, cy, a, t.get(col, t["accent"]), size="8.5pt")
 
     def body(self, cr, o, bx, by, bw, bh, a, t):
         """The open pill under the core band."""
@@ -1153,6 +1229,16 @@ class Island:
             now = datetime.datetime.now()
             self.text(cr, f'<span size="9pt">{esc(day_name(now))} · {esc(day_month(now))}</span>', bx + bw / 2,
                       by + bh / 2 - 2, a, t["muted"])
+        elif k == "privacy":
+            rows = privacy_rows(o["state"])
+            y0 = by + 18
+            for i, (g, col, what, who) in enumerate(rows):
+                ry = y0 + 20 * i
+                self.glyph(cr, g, bx + 24, ry, a, t.get(col, t["accent"]), size="9pt")
+                lw = self.text(cr, f'<span size="9pt" weight="500">{esc(what)}</span>', bx + 40, ry, a, t["text"],
+                               align="left")   # two layouts, not a foreground span: a span ignores the fade
+                self.text(cr, f'<span size="9pt">{esc(who)}</span>', bx + 48 + lw, ry, a, t["muted"], align="left",
+                          width=bw - 64 - lw)
         elif k == "media":
             m = self.media or {}
             self.draw_cover(cr, bx + 40, mid - 2, 46, a, t)

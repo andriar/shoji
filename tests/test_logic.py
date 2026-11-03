@@ -1039,6 +1039,55 @@ class Accessibility(unittest.TestCase):
         self.assertFalse(base.is_glyph("Save"))
 
 
+class Privacy(unittest.TestCase):
+    """見: who records the mic or the camera, and the droplet that says so."""
+    def setUp(self):
+        self.pv = load("shoji-privacy")
+
+    @staticmethod
+    def out(app, source=51, corked=False, binary=None, media="RecordStream"):
+        return {"source": source, "corked": corked, "properties": {
+            "application.name": app, "application.process.binary": binary or app.lower(), "media.name": media}}
+
+    def test_only_apps_recording_a_microphone(self):
+        sources = [{"index": 50, "name": "alsa_output.usb.analog-stereo.monitor"}, {"index": 51, "name": "alsa_input.usb"}]
+        outs = [self.out("Google Chrome", binary="chrome"), self.out("Slack"),
+                self.out("Google Chrome", binary="chrome"),            # a second stream: named once
+                self.out("OBS", source=50),                            # records what plays, not you
+                self.out("Zoom", corked=True),                         # paused
+                self.out("PulseAudio Volume Control", binary="pavucontrol"),   # a level meter
+                self.out("Firefox", media="Peak detect")]
+        self.assertEqual(self.pv.mic_users(outs, sources), ["Google Chrome", "Slack"])
+        by_name = [dict(self.out("OBS"), source="alsa_output.usb.analog-stereo.monitor")]
+        self.assertEqual(self.pv.mic_users(by_name, sources), [])
+
+    def test_processes_holding_a_camera(self):
+        import os
+        with tempfile.TemporaryDirectory() as d:
+            proc = Path(d)
+            for pid, comm, target in ((10, "zoom", "/dev/video0"), (11, "pipewire", "/dev/video0"),
+                                      (12, "chrome", "/dev/null"), (13, "zoom", "/dev/video2"), (14, "me", "/dev/video0")):
+                (proc / str(pid) / "fd").mkdir(parents=True)
+                (proc / str(pid) / "comm").write_text(comm + "\n")
+                os.symlink(target, proc / str(pid) / "fd" / "3")
+            (proc / "self").mkdir()
+            self.assertEqual(self.pv.camera_users(proc, me=14), ["zoom"])
+
+    def test_the_rows_and_the_droplet_that_never_counts(self):
+        from shoji_widgets.island import choose, privacy_rows
+        st = {"mic": ["Slack"], "mic_muted": True, "camera": ["zoom"], "screen": "window"}
+        rows = privacy_rows(st)
+        self.assertEqual([(g, c) for g, c, _w, _who in rows], [("mic-off", "warn"), ("video", "ok"), ("screen-share", "accent")])
+        self.assertIn("Slack", rows[0][3])
+        self.assertEqual(privacy_rows({"mic": [], "camera": []}), [])
+        pv = {"kind": "privacy", "key": "privacy", "state": st}
+        acts = [{"kind": k, "key": k, "state": {}} for k in ("zazen", "timer", "media", "eyes")]
+        self.assertEqual(choose(None, None, acts, [], False, False, pv), (acts[0], acts[1:3] + [pv]))  # past the three
+        self.assertEqual(choose(None, None, acts[:1], [], True, False, pv), (acts[0], [pv]))   # zazen focus: still there
+        self.assertEqual(choose(None, None, acts, [], False, True, pv), (None, []))            # fullscreen: the island steps aside
+        self.assertEqual(choose(("vol", 5, False), None, [], [], False, False, pv), ("level", [pv]))
+
+
 class Units(unittest.TestCase):
     """The systemd user units shoji-session starts: one anchor, the pieces bound to it."""
     DIR = REPO / "config/systemd/user"

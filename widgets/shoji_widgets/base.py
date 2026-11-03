@@ -184,6 +184,8 @@ STRINGS = {  # English text -> (Indonesian, Japanese)
     "muted": ("senyap", "ミュート"), "Timer": ("Timer", "タイマー"), "Stopwatch": ("Stopwatch", "ストップウォッチ"),
     "paused": ("dijeda", "一時停止中"), "since {t}": ("sejak {t}", "{t} から"), "{label} · done": ("{label} · selesai", "{label} · 終了"),
     "start a stopwatch": ("mulai stopwatch", "ストップウォッチを開始"), "start a {d} timer": ("mulai timer {d}", "{d} のタイマーを開始"),
+    "Microphone": ("Mikrofon", "マイク"), "Camera": ("Kamera", "カメラ"), "Screen sharing": ("Berbagi layar", "画面共有"),
+    "one window": ("satu jendela", "ウィンドウ 1 つ"), "whole screen": ("seluruh layar", "画面全体"),
 }
 LANGS = {"en": "English", "id": "Indonesia", "ja": "日本語"}
 ID_MONTHS = "Januari Februari Maret April Mei Juni Juli Agustus September Oktober November Desember".split()

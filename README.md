@@ -82,6 +82,12 @@ In motion: Koyomi, now playing, the launcher, the ensō OSD and a zazen session 
   (right-click: play / pause, scroll: previous / next), pause / resume a timer (right-click:
   cancel), the Sound popover from a level. It steps aside for a fullscreen window, except to show a
   level. Frames run only while it moves; the music's bars redraw only while they show.
+- 見 Privacy: while an app records the microphone or the camera, or the screen is shared, a small
+  droplet sits at the far right (mic amber, slashed when muted; camera green; screen in the
+  accent). It is not one of the three: nothing pushes it out. A click names the apps, a second click
+  opens the Sound popover, a right-click mutes the microphone. Paused streams, level meters and
+  recordings of what plays (a speaker's `.monitor`) do not count. `shoji-privacy` prints it once;
+  it wakes on PipeWire and inotify events, never polls.
 
 **⏲ Timers** — type `timer 10m tea` or `stopwatch` in the launcher, or run `shoji-timer 10m tea`.
 When a timer ends the rin sounds and the island says so (a notification without the island).
